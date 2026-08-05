@@ -29,3 +29,8 @@ Thumbs.db
 # Build artifacts
 *.pyc
 research/python/beluga.egg-info/
+
+# Desktop app (0.2)
+apps/desktop/node_modules/
+apps/desktop/dist/
+apps/desktop/src-tauri/target/

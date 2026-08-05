@@ -54,7 +54,7 @@ Beluga is built incrementally. Each milestone has a clear goal and acceptance cr
 | Milestone | Goal | Key deliverables | Status |
 |-----------|------|-----------------|--------|
 | 0.1 | Prove the mathematics | Python research implementation: listener coordinates, 2D VBAP, offline WAV export, tests | ✅ **Complete** |
-| 0.2 | Build the visual world | Tauri + React + Three.js: room viewer, speaker/listener placement, listener view | ⬜ Not started |
+| 0.2 | Build the visual world | Tauri + React + Three.js: room viewer, speaker/listener placement, listener view | 🟡 **In progress** |
 | 0.3 | Make sound physical | Rust real-time renderer, CoreAudio/CPAL, device enumeration, real-time VBAP | ⬜ Not started |
 | 0.4 | Geometry calibration | Distance/delay alignment, level matching, capability analysis | ⬜ Not started |
 | 0.5 | Music playback | WAV/FLAC stereo pipeline, Faithful Mode | ⬜ Not started |
@@ -433,3 +433,5 @@ The implementation respects these rules:
 |------|--------|
 | 2026-08-05 | Initialized repo, scaffolding, ARCHITECTURE.md baseline. Implemented Beluga 0.1: geometry, VBAP, gain smoothing, delay alignment, gain management, offline renderer, WAV export, CLI demo. 90 tests passing. Pushed to GitHub. |
 | 2026-08-05 | Added MIT LICENSE file, GitHub repo link and badges to README, requirements.txt for non-pip-install users. |
+| 2026-08-05 | Docs updated to reflect 0.1 completion (past tense, checkmarks). |
+| 2026-08-05 | Started Beluga 0.2: scaffolded Tauri + React + TypeScript + Vite + Three.js desktop app. Implemented 3D room viewer, speaker placement (surface click + numeric), speaker orientation, listener placement/orientation, virtual source, VBAP gain visualization, camera views (orbit/top/front/listener), GLB import, project save/load. TypeScript compiles clean, frontend builds, Rust backend compiles. |
