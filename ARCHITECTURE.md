@@ -431,3 +431,4 @@ The implementation respects these rules:
 | Date | Change |
 |------|--------|
 | 2026-08-05 | Initialized repo, scaffolding, ARCHITECTURE.md baseline. Implemented Beluga 0.1: geometry, VBAP, gain smoothing, delay alignment, gain management, offline renderer, WAV export, CLI demo. 90 tests passing. Pushed to GitHub. |
+| 2026-08-05 | Added MIT LICENSE file, GitHub repo link and badges to README, requirements.txt for non-pip-install users. |
