@@ -19,6 +19,7 @@ export default function App() {
   });
   const [placingSpeaker, setPlacingSpeaker] = useState(false);
   const [currentView, setCurrentView] = useState<CameraView>("orbit");
+  const [transformMode, setTransformMode] = useState<"translate" | "rotate" | "scale">("translate");
   const speakerCounter = useRef(0);
 
   // Init scene
@@ -88,6 +89,11 @@ export default function App() {
   const handleSetView = (view: CameraView) => {
     setCurrentView(view);
     sceneRef.current?.setView(view);
+  };
+
+  const handleTransformMode = (mode: "translate" | "rotate" | "scale") => {
+    setTransformMode(mode);
+    sceneRef.current?.setTransformMode(mode);
   };
 
   const handleRoomChange = (field: keyof typeof project.room, value: number) => {
@@ -270,6 +276,24 @@ export default function App() {
             ))}
           </div>
 
+          {/* Transform gizmo mode (shown when something is selected) */}
+          {selectedId && (
+            <div className="section">
+              <div className="section-title">Transform Gizmo</div>
+              <div className="btn-row" style={{ marginBottom: 6 }}>
+                <button className={`btn ${transformMode === "translate" ? "btn-primary" : ""}`}
+                  onClick={() => handleTransformMode("translate")}>Move (W)</button>
+                <button className={`btn ${transformMode === "rotate" ? "btn-primary" : ""}`}
+                  onClick={() => handleTransformMode("rotate")}>Rotate (E)</button>
+                <button className={`btn ${transformMode === "scale" ? "btn-primary" : ""}`}
+                  onClick={() => handleTransformMode("scale")}>Scale (R)</button>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)" }}>
+                Grab the colored axes in the 3D view to transform. Esc to deselect, Delete to remove.
+              </div>
+            </div>
+          )}
+
           {/* Selected speaker editor */}
           {selectedSpeaker && (
             <div className="section">
@@ -280,7 +304,7 @@ export default function App() {
                   onChange={(e) => handleSpeakerNameChange(selectedSpeaker.id, e.target.value)} />
               </div>
               <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>
-                Drag the speaker in the 3D view to reposition
+                Grab the colored axes in the 3D view to reposition
               </div>
               <div className="input-group">
                 <label>X</label>
@@ -308,7 +332,7 @@ export default function App() {
             <div className="section">
               <div className="section-title">Listener</div>
               <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>
-                Drag the listener in the 3D view to reposition
+                Select the orange head, then use the gizmo to move it
               </div>
               <div className="slider-row">
                 <label>Facing</label>
@@ -323,7 +347,7 @@ export default function App() {
           <div className="section">
             <div className="section-title">Virtual Source</div>
             <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>
-              Drag the purple sphere in the 3D view to move
+              Select the purple sphere, then use the gizmo to move it
             </div>
             <div className="slider-row">
               <label>Azimuth</label>
