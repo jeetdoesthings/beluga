@@ -11,9 +11,9 @@ Beluga transforms arbitrary speaker arrangements into the best coherent spatial 
 
 > **Do not build the room around the audio system. Build the audio system around the room.**
 
-## Current status: Beluga 0.1 — Prove the mathematics
+## Status: Beluga 0.1 complete — math proven
 
-This repository is at the **0.1 milestone**: a Python research implementation that validates the core spatial-audio math with no UI, no real-time audio, and no hardware.
+Beluga 0.1 is **complete**: a Python research implementation that validates the core spatial-audio math with no UI, no real-time audio, and no hardware. All 10 spec §82 MVP acceptance criteria are verified by 90 passing tests.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full project description, architecture, code module docs, and current state.
 
@@ -61,7 +61,7 @@ beluga/
 
 | Milestone | Goal |
 |-----------|------|
-| 0.1 (current) | Prove the math (Python) |
+| 0.1 ✅ | Prove the math (Python) |
 | 0.2 | Build the visual world (Tauri + Three.js) |
 | 0.3 | Make sound physical (Rust real-time audio) |
 | 0.4 | Geometry calibration |

@@ -69,15 +69,16 @@ Beluga is built incrementally. Each milestone has a clear goal and acceptance cr
 
 **Goal:** Validate the core math with no UI and no real-time audio.
 
-**What's being built:**
+**What was built:**
 
-- Listener-relative coordinate system (azimuth, elevation, distance)
-- Arbitrary speaker placement in 3D
-- 2D Vector Base Amplitude Panning (VBAP)
-- Smooth gain interpolation for moving sources
-- Geometric distance delay alignment
-- Offline per-speaker WAV export
-- Comprehensive automated tests
+- Listener-relative coordinate system (azimuth, elevation, distance) — `geometry.py`
+- Arbitrary speaker placement in 3D — `speaker.py`
+- 2D Vector Base Amplitude Panning (VBAP) — `vbap.py`
+- Smooth gain interpolation for moving sources — `gain_smoothing.py`
+- Geometric distance delay alignment — `delay_alignment.py`
+- Gain management with headroom and soft limiting — `gain_management.py`
+- Offline per-speaker WAV export — `render.py`, `export.py`, `cli.py`
+- Comprehensive automated tests — `tests/` (90 tests, all passing)
 
 **Acceptance criteria (spec §82):**
 - Arbitrary speaker XYZ positions are accepted ✅
