@@ -1,16 +1,12 @@
 // Three.js scene manager for Beluga's 3D room viewer (spec §9, §10, §12, §13, §15, §19, §45)
+// Apple Design: light mode, clean materials, direct manipulation (drag to move, click to select)
 
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
-
-// TransformControls extends Object3D in three.js; cast as needed
-
 import type {
   BelugaProject,
   Speaker,
-  Listener,
   Vector3 as BVector3,
   Orientation,
 } from "../types/project";
@@ -25,41 +21,48 @@ export interface SceneUpdate {
 }
 
 export class BelugaScene {
-  // Three.js core
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   orbitControls: OrbitControls;
-  transformControls: TransformControls;
   container: HTMLElement;
 
-  // Scene objects
-  roomMesh: THREE.Mesh | null = null;
+  // Scene groups
   roomGroup: THREE.Group;
   speakerGroup: THREE.Group;
+  listenerGroup: THREE.Group;
+
+  // Objects
   speakerMeshes: THREE.Mesh[] = [];
-  listenerMesh: THREE.Group | null = null;
-  sourceMesh: THREE.Mesh | null = null;
-  sourceArrow: THREE.ArrowHelper | null = null;
+  speakerLabels: THREE.Sprite[] = [];
+  listenerMesh: THREE.Mesh | null = null;
   listenerArrow: THREE.ArrowHelper | null = null;
+  sourceMesh: THREE.Mesh | null = null;
+  roomWireframe: THREE.LineSegments | null = null;
 
   // State
   project: BelugaProject;
   selectedObjectId: string | null = null;
   currentView: CameraView = "orbit";
+  isDragging = false;
+  draggedObjectId: string | null = null;
+  dragPlane: THREE.Plane;
+  dragOffset = new THREE.Vector3();
 
   // Callbacks
   onSelectionChange: ((id: string | null) => void) | null = null;
-  onObjectMove: ((id: string, position: BVector3) => void) | null = null;
-  onObjectRotate: ((id: string, orientation: Orientation) => void) | null = null;
+  onSpeakerMove: ((id: string, position: BVector3) => void) | null = null;
+  onListenerMove: ((position: BVector3) => void) | null = null;
   onSourceMove: ((azimuth: number, distance: number) => void) | null = null;
   onSceneUpdate: ((update: SceneUpdate) => void) | null = null;
+  onPlacementRequest: ((position: BVector3) => void) | null = null;
 
-  // Raycaster for click placement
+  // Raycaster
   raycaster = new THREE.Raycaster();
   mouse = new THREE.Vector2();
+  pointerDownPos = new THREE.Vector2();
+  pointerDownTime = 0;
 
-  // Mode
   placementMode: "none" | "speaker" = "none";
 
   private animationId: number | null = null;
@@ -68,145 +71,148 @@ export class BelugaScene {
   constructor(container: HTMLElement, project: BelugaProject) {
     this.container = container;
     this.project = project;
+    this.dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-    // Renderer
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    // Renderer — light mode
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
-    this.renderer.setClearColor(0x1a1a2e);
+    this.renderer.setClearColor(0xf5f5f7, 1); // Apple light gray
     container.appendChild(this.renderer.domElement);
 
     // Scene
     this.scene = new THREE.Scene();
-    this.scene.add(new THREE.AmbientLight(0x404040, 2));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    this.scene.background = new THREE.Color(0xf5f5f7);
+
+    // Lighting — soft, Apple-style
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(5, 10, 8);
     this.scene.add(dirLight);
+    const fillLight = new THREE.DirectionalLight(0xccddff, 0.3);
+    fillLight.position.set(-5, 5, -5);
+    this.scene.add(fillLight);
 
-    // Grid
-    const grid = new THREE.GridHelper(10, 20, 0x444466, 0x333344);
+    // Grid — subtle
+    const grid = new THREE.GridHelper(20, 40, 0xd0d0d8, 0xe8e8ec);
+    (grid.material as THREE.Material).transparent = true;
+    (grid.material as THREE.Material).opacity = 0.5;
     this.scene.add(grid);
 
     // Camera
-    this.camera = new THREE.PerspectiveCamera(
-      60,
-      container.clientWidth / container.clientHeight,
-      0.1,
-      1000
-    );
-    this.camera.position.set(6, 6, 5);
-    this.camera.lookAt(0, 0, 1);
+    this.camera = new THREE.PerspectiveCamera(55, container.clientWidth / container.clientHeight, 0.1, 1000);
+    this.camera.position.set(6, 5, 7);
+    this.camera.lookAt(0, 1, 0);
 
-    // Controls
+    // Orbit controls
     this.orbitControls = new OrbitControls(this.camera, this.renderer.domElement);
     this.orbitControls.enableDamping = true;
-    this.orbitControls.target.set(0, 0, 1);
-
-    this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
-    this.transformControls.addEventListener("dragging-changed", (e) => {
-      this.orbitControls.enabled = !e.value;
-    });
-    this.transformControls.addEventListener("objectChange", () => {
-      this.handleTransformChange();
-    });
-  this.scene.add(this.transformControls as unknown as THREE.Object3D);
+    this.orbitControls.dampingFactor = 0.1;
+    this.orbitControls.target.set(0, 1, 0);
+    this.orbitControls.minDistance = 2;
+    this.orbitControls.maxDistance = 30;
 
     // Groups
     this.roomGroup = new THREE.Group();
     this.scene.add(this.roomGroup);
     this.speakerGroup = new THREE.Group();
     this.scene.add(this.speakerGroup);
+    this.listenerGroup = new THREE.Group();
+    this.scene.add(this.listenerGroup);
 
-    // Build initial scene
+    // Build scene
     this.buildRoom();
     this.rebuildSpeakers();
     this.buildListener();
     this.buildSource();
 
-    // Event listeners
-    this.renderer.domElement.addEventListener("click", this.onCanvasClick);
+    // Events — use pointer events for drag
+    this.renderer.domElement.addEventListener("pointerdown", this.onPointerDown);
     this.renderer.domElement.addEventListener("pointermove", this.onPointerMove);
+    this.renderer.domElement.addEventListener("pointerup", this.onPointerUp);
 
-    // Resize observer
+    // Resize
     this.resizeObserver = new ResizeObserver(() => this.onResize());
     this.resizeObserver.observe(container);
 
-    // Start animation loop
     this.animate();
   }
 
-  // --- Room ---
+  // --- Coordinate conversion: Three.js (X right, Y up, Z toward viewer) → Beluga (X right, Y forward, Z up) ---
+  // Beluga X → Three X, Beluga Y → Three -Z (forward is -Z in Three), Beluga Z → Three Y
+  threeToBeluga(p: THREE.Vector3): BVector3 {
+    return { x: p.x, y: -p.z, z: p.y };
+  }
+  belugaToThree(p: BVector3): THREE.Vector3 {
+    return new THREE.Vector3(p.x, p.z, -p.y);
+  }
 
+  // --- Room ---
   buildRoom() {
-    // Clear existing
-    if (this.roomMesh) {
-      this.roomGroup.remove(this.roomMesh);
-      this.roomMesh = null;
-    }
-    // Clear any GLTF children
     while (this.roomGroup.children.length > 0) {
-      const child = this.roomGroup.children[0];
-      this.roomGroup.remove(child);
+      this.roomGroup.remove(this.roomGroup.children[0]);
     }
 
     const { length, width, height } = this.project.room;
 
-    // Room as wireframe box (meters: width=X, length=Y, height=Z)
+    // Wireframe only — no reflective floor
     const geo = new THREE.BoxGeometry(width, length, height);
     const edges = new THREE.EdgesGeometry(geo);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x6688aa });
-    const wireframe = new THREE.LineSegments(edges, lineMat);
-    wireframe.position.set(0, 0, height / 2);
-    this.roomGroup.add(wireframe);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x88aacc, transparent: true, opacity: 0.6 });
+    this.roomWireframe = new THREE.LineSegments(edges, lineMat);
+    this.roomWireframe.position.set(0, 0, height / 2);
+    this.roomGroup.add(this.roomWireframe);
 
-    // Semi-transparent floor
-    const floorGeo = new THREE.PlaneGeometry(width, length);
-    const floorMat = new THREE.MeshBasicMaterial({
-      color: 0x2a2a4a,
-      transparent: true,
-      opacity: 0.3,
-      side: THREE.DoubleSide,
-    });
-    const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.rotation.x = -Math.PI / 2;
-    this.roomGroup.add(floor);
-
-    this.roomMesh = floor;
+    // Grid floor (already in scene but could add room-specific)
+    // No floor mesh — keep it clean
   }
 
   loadGLB(data: ArrayBuffer) {
-    // Clear existing room
     while (this.roomGroup.children.length > 0) {
-      const child = this.roomGroup.children[0];
-      this.roomGroup.remove(child);
+      this.roomGroup.remove(this.roomGroup.children[0]);
     }
 
     const loader = new GLTFLoader();
     loader.parse(data, "", (gltf) => {
       const model = gltf.scene;
-
-      // Normalize: compute bounding box, scale to fit, center on origin
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-
-      // Determine scale: assume the largest dimension should be reasonable room size
-      // We'll scale so that the max dimension becomes the room's max dimension
       const maxDim = Math.max(size.x, size.y, size.z);
       const targetMax = Math.max(this.project.room.width, this.project.room.length, this.project.room.height);
       const scale = maxDim > 0 ? targetMax / maxDim : 1;
 
       model.scale.setScalar(scale);
-      // Recompute center after scaling
       const box2 = new THREE.Box3().setFromObject(model);
       const center2 = box2.getCenter(new THREE.Vector3());
       model.position.sub(center2);
-      // Put floor at z=0
       const box3 = new THREE.Box3().setFromObject(model);
-      const minZ = box3.min.z;
-      model.position.z -= minZ;
+      model.position.y -= box3.min.y;
+
+      // Apply a semi-transparent material for the mesh
+      model.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          const mat = new THREE.MeshLambertMaterial({
+            color: 0xcccccc,
+            transparent: true,
+            opacity: 0.4,
+            side: THREE.DoubleSide,
+            wireframe: false,
+          });
+          mesh.material = mat;
+        }
+      });
 
       this.roomGroup.add(model);
+
+      // Add wireframe edges on top
+      const boxGeo = new THREE.Box3().setFromObject(model);
+      const edgeSize = boxGeo.getSize(new THREE.Vector3());
+      const edgeGeo = new THREE.BoxGeometry(edgeSize.x, edgeSize.y, edgeSize.z);
+      const edges = new THREE.EdgesGeometry(edgeGeo);
+      const edgeMat = new THREE.LineBasicMaterial({ color: 0x88aacc, transparent: true, opacity: 0.3 });
+      const edgeLines = new THREE.LineSegments(edges, edgeMat);
+      this.roomGroup.add(edgeLines);
     });
   }
 
@@ -217,6 +223,7 @@ export class BelugaScene {
       this.speakerGroup.remove(this.speakerGroup.children[0]);
     }
     this.speakerMeshes = [];
+    this.speakerLabels = [];
 
     for (const speaker of this.project.speakers) {
       const mesh = this.createSpeakerMesh(speaker);
@@ -226,38 +233,47 @@ export class BelugaScene {
   }
 
   createSpeakerMesh(speaker: Speaker): THREE.Mesh {
-    const geo = new THREE.SphereGeometry(0.15, 16, 12);
+    const geo = new THREE.SphereGeometry(0.18, 24, 18);
     const mat = new THREE.MeshPhongMaterial({
-      color: speaker.enabled ? 0x44ff88 : 0x666666,
+      color: 0x007aff, // Apple blue
+      transparent: true,
+      opacity: 0.9,
     });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(speaker.position.x, speaker.position.z, -speaker.position.y);
+    const tp = this.belugaToThree(speaker.position);
+    mesh.position.copy(tp);
     mesh.userData = { type: "speaker", id: speaker.id, name: speaker.name };
+    mesh.castShadow = true;
+
+    // Selection ring
+    if (this.selectedObjectId === speaker.id) {
+      const ringGeo = new THREE.RingGeometry(0.22, 0.28, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x007aff, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.copy(tp);
+      ring.position.y += 0.01;
+      ring.userData = { type: "selection-ring", speakerId: speaker.id };
+      this.speakerGroup.add(ring);
+    }
+
     return mesh;
   }
 
   addSpeaker(speaker: Speaker) {
-    this.project.speakers.push(speaker);
+    // Only add to project.speakers and create mesh — React handles state separately
     const mesh = this.createSpeakerMesh(speaker);
     this.speakerGroup.add(mesh);
     this.speakerMeshes.push(mesh);
-    this.updateSceneUpdate();
+    this.updateGainVisualization();
   }
 
   updateSpeakerPosition(id: string, pos: BVector3) {
     const mesh = this.speakerMeshes.find((m) => m.userData.id === id);
     if (mesh) {
-      mesh.position.set(pos.x, pos.z, -pos.y);
+      mesh.position.copy(this.belugaToThree(pos));
     }
-    this.updateSceneUpdate();
-  }
-
-  updateSpeakerOrientation(id: string, orient: Orientation) {
-    const speaker = this.project.speakers.find((s) => s.id === id);
-    if (speaker) {
-      speaker.orientation = orient;
-    }
-    this.updateSceneUpdate();
+    this.updateGainVisualization();
   }
 
   removeSpeaker(id: string) {
@@ -266,59 +282,66 @@ export class BelugaScene {
       this.speakerGroup.remove(this.speakerMeshes[idx]);
       this.speakerMeshes.splice(idx, 1);
     }
+    // Also remove selection ring if present
+    const ringIdx = this.speakerGroup.children.findIndex(
+      (c) => c.userData?.type === "selection-ring" && c.userData?.speakerId === id
+    );
+    if (ringIdx >= 0) {
+      this.speakerGroup.remove(this.speakerGroup.children[ringIdx]);
+    }
     this.project.speakers = this.project.speakers.filter((s) => s.id !== id);
     if (this.selectedObjectId === id) {
-      this.transformControls.detach();
       this.selectedObjectId = null;
     }
-    this.updateSceneUpdate();
+    this.rebuildSelectionVisuals();
+    this.updateGainVisualization();
   }
 
   // --- Listener ---
 
   buildListener() {
-    if (this.listenerMesh) {
-      this.scene.remove(this.listenerMesh);
-      this.listenerMesh = null;
-    }
-    if (this.listenerArrow) {
-      this.scene.remove(this.listenerArrow);
-      this.listenerArrow = null;
+    while (this.listenerGroup.children.length > 0) {
+      this.listenerGroup.remove(this.listenerGroup.children[0]);
     }
 
     const listener = this.project.listeners[0];
     if (!listener) return;
 
-    // Head sphere
-    const headGeo = new THREE.SphereGeometry(0.18, 16, 12);
-    const headMat = new THREE.MeshPhongMaterial({ color: 0xffaa44 });
+    // Head
+    const headGeo = new THREE.SphereGeometry(0.2, 24, 18);
+    const headMat = new THREE.MeshPhongMaterial({
+      color: 0xff9500, // Apple orange
+      transparent: true,
+      opacity: 0.9,
+    });
     const head = new THREE.Mesh(headGeo, headMat);
-    head.position.set(listener.position.x, listener.position.z, -listener.position.y);
-    head.userData = { type: "listener", id: listener.id, name: listener.name };
+    const tp = this.belugaToThree(listener.position);
+    head.position.copy(tp);
+    head.userData = { type: "listener" };
 
-    // Forward arrow
+    // Direction arrow (listener forward)
     const yawRad = (listener.orientation.yaw * Math.PI) / 180;
-    const dir = new THREE.Vector3(Math.sin(yawRad), 0, -Math.cos(yawRad));
-    // In Three.js, our mapping is: world X->Three X, world Y-> Three -Z, world Z -> Three Y
-    // So forward (+Y in world) maps to -Z in Three
-    // Forward direction in listener frame: yaw rotates +Y
-    // dir_x = sin(yaw), dir_y_world = cos(yaw) -> three_z = -cos(yaw)
+    // In Three.js: forward (-Z) rotated by yaw
     const arrowDir = new THREE.Vector3(Math.sin(yawRad), 0, -Math.cos(yawRad)).normalize();
-    this.listenerArrow = new THREE.ArrowHelper(
-      arrowDir,
-      head.position,
-      0.8,
-      0xff8800,
-      0.15,
-      0.1
-    );
+    this.listenerArrow = new THREE.ArrowHelper(arrowDir, tp, 0.9, 0xff9500, 0.18, 0.12);
 
-    const group = new THREE.Group();
-    group.add(head);
-    this.scene.add(group);
-    this.scene.add(this.listenerArrow);
-    this.listenerMesh = group;
+    this.listenerMesh = head;
+    this.listenerGroup.add(head);
+    this.listenerGroup.add(this.listenerArrow);
+
+    // Selection ring
+    if (this.selectedObjectId === "listener") {
+      const ringGeo = new THREE.RingGeometry(0.26, 0.32, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xff9500, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.copy(tp);
+      ring.position.y += 0.01;
+      this.listenerGroup.add(ring);
+    }
   }
+
+  // --- Listener update methods ---
 
   updateListenerPosition(pos: BVector3) {
     const listener = this.project.listeners[0];
@@ -326,7 +349,8 @@ export class BelugaScene {
       listener.position = pos;
     }
     this.buildListener();
-    this.updateSceneUpdate();
+    this.buildSource(); // source position depends on listener
+    this.updateGainVisualization();
   }
 
   updateListenerOrientation(orient: Orientation) {
@@ -335,10 +359,11 @@ export class BelugaScene {
       listener.orientation = orient;
     }
     this.buildListener();
-    this.updateSceneUpdate();
+    this.buildSource();
+    this.updateGainVisualization();
   }
 
-  // --- Virtual Source ---
+  // --- Virtual source ---
 
   buildSource() {
     if (this.sourceMesh) {
@@ -346,19 +371,39 @@ export class BelugaScene {
       this.sourceMesh = null;
     }
 
-    const geo = new THREE.SphereGeometry(0.12, 16, 12);
-    const mat = new THREE.MeshPhongMaterial({ color: 0x44aaff, emissive: 0x224488 });
+    const geo = new THREE.SphereGeometry(0.14, 20, 16);
+    const mat = new THREE.MeshPhongMaterial({
+      color: 0xaf52ce, // Apple purple
+      emissive: 0x442266,
+      transparent: true,
+      opacity: 0.85,
+    });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.userData = { type: "source", id: "source" };
+    mesh.userData = { type: "source" };
 
     const listener = this.project.listeners[0];
     if (listener) {
       const src = this.project.virtualSource;
       const azRad = (src.azimuth * Math.PI) / 180;
-      const x = listener.position.x + src.distance * Math.sin(azRad);
-      const y = listener.position.y + src.distance * Math.cos(azRad);
-      const z = listener.position.z;
-      mesh.position.set(x, z, -y);
+      // In Beluga coords: x = listener.x + d*sin(az), y = listener.y + d*cos(az), z = listener.z
+      const belugaPos = {
+        x: listener.position.x + src.distance * Math.sin(azRad),
+        y: listener.position.y + src.distance * Math.cos(azRad),
+        z: listener.position.z,
+      };
+      mesh.position.copy(this.belugaToThree(belugaPos));
+    }
+
+    // Selection ring
+    if (this.selectedObjectId === "source") {
+      const ringGeo = new THREE.RingGeometry(0.18, 0.22, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xaf52ce, side: THREE.DoubleSide, transparent: true, opacity: 0.5 });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.copy(mesh.position);
+      ring.position.y += 0.01;
+      this.scene.add(ring);
+      mesh.userData.ringId = ring.id;
     }
 
     this.scene.add(mesh);
@@ -369,90 +414,233 @@ export class BelugaScene {
     this.project.virtualSource.azimuth = azimuth;
     this.project.virtualSource.distance = distance;
     this.buildSource();
-    this.updateSceneUpdate();
+    this.updateGainVisualization();
   }
 
-  // --- Selection & Transform ---
+  // --- Selection ---
 
   selectObject(id: string | null) {
     this.selectedObjectId = id;
-    if (id === null) {
-      this.transformControls.detach();
-    } else {
-      // Find the mesh
-      const mesh =
-        this.speakerMeshes.find((m) => m.userData.id === id) ||
-        (this.listenerMesh?.children[0] as THREE.Mesh | undefined) ||
-        this.sourceMesh;
-      if (mesh && mesh !== this.listenerMesh as any) {
-        this.transformControls.attach(mesh);
-      }
-    }
+    this.rebuildSelectionVisuals();
     if (this.onSelectionChange) this.onSelectionChange(id);
   }
 
-  setTransformMode(mode: "translate" | "rotate") {
-    this.transformControls.setMode(mode);
-  }
-
-  handleTransformChange() {
-    if (!this.selectedObjectId) return;
-    const obj = this.transformControls.object;
-    if (!obj) return;
-
-    // Convert Three.js coords back to Beluga world coords (X->X, Z->Y, Y->Z)
-    const belugaPos = { x: obj.position.x, y: -obj.position.z, z: obj.position.y };
-
-    if (obj.userData.type === "speaker" && this.onObjectMove) {
-      this.onObjectMove(obj.userData.id, belugaPos);
+  rebuildSelectionVisuals() {
+    // Remove old selection rings
+    this.speakerGroup.children = this.speakerGroup.children.filter((c) =>
+      !(c.userData?.type === "selection-ring")
+    );
+    const listenerRings = this.listenerGroup.children.filter((c) =>
+      c.userData?.type === "selection-ring" || (c as THREE.Mesh).geometry?.type === "RingGeometry"
+    );
+    for (const r of listenerRings) {
+      this.listenerGroup.remove(r);
     }
-    // Listener and source are handled differently
-    this.updateSceneUpdate();
+
+    // Rebuild listener/source to show selection
+    this.buildListener();
+    this.buildSource();
+    this.rebuildSpeakers(); // rebuild speaker meshes with selection ring
   }
 
-  // --- Camera Views ---
+  // --- Dragging ---
+
+  onPointerDown = (event: PointerEvent) => {
+    this.pointerDownPos.set(event.clientX, event.clientY);
+    this.pointerDownTime = Date.now();
+
+    if (this.placementMode === "speaker") {
+      // Placement mode: click to place new speaker
+      this.updateMouseFromEvent(event);
+      this.raycaster.setFromCamera(this.mouse, this.camera);
+
+      // Raycast against floor grid plane (y=0)
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const point = new THREE.Vector3();
+      this.raycaster.ray.intersectPlane(groundPlane, point);
+      if (point) {
+        const belugaPos = this.threeToBeluga(point);
+        // Clamp to room bounds
+        const r = this.project.room;
+        belugaPos.x = Math.max(-r.width / 2, Math.min(r.width / 2, belugaPos.x));
+        belugaPos.y = Math.max(-r.length / 2, Math.min(r.length / 2, belugaPos.y));
+        belugaPos.z = Math.max(0, Math.min(r.height, belugaPos.z));
+        if (this.onPlacementRequest) this.onPlacementRequest(belugaPos);
+      }
+      this.placementMode = "none";
+      return;
+    }
+
+    // Check for object selection / drag
+    this.updateMouseFromEvent(event);
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+
+    // Check speakers
+    const speakerHits = this.raycaster.intersectObjects(this.speakerMeshes, false);
+    // Check listener
+    const listenerHits = this.listenerMesh ? this.raycaster.intersectObject(this.listenerMesh, false) : [];
+    // Check source
+    const sourceHits = this.sourceMesh ? this.raycaster.intersectObject(this.sourceMesh, false) : [];
+
+    let hitObjectId: string | null = null;
+    let hitMesh: THREE.Object3D | null = null;
+
+    // Find closest hit
+    const allHits: { dist: number; id: string; mesh: THREE.Object3D }[] = [];
+    if (speakerHits.length > 0) {
+      allHits.push({ dist: speakerHits[0].distance, id: speakerHits[0].object.userData.id, mesh: speakerHits[0].object });
+    }
+    if (listenerHits.length > 0) {
+      allHits.push({ dist: listenerHits[0].distance, id: "listener", mesh: listenerHits[0].object });
+    }
+    if (sourceHits.length > 0) {
+      allHits.push({ dist: sourceHits[0].distance, id: "source", mesh: sourceHits[0].object });
+    }
+
+    if (allHits.length > 0) {
+      allHits.sort((a, b) => a.dist - b.dist);
+      hitObjectId = allHits[0].id;
+      hitMesh = allHits[0].mesh;
+    }
+
+    if (hitObjectId) {
+      this.orbitControls.enabled = false;
+      this.isDragging = true;
+      this.draggedObjectId = hitObjectId;
+      this.selectObject(hitObjectId);
+
+      // Set up drag plane at the object's height
+      const objHeight = (hitMesh as THREE.Object3D).position.y;
+      this.dragPlane.set(new THREE.Vector3(0, 1, 0), -objHeight);
+
+      // Calculate offset
+      const intersect = new THREE.Vector3();
+      this.raycaster.ray.intersectPlane(this.dragPlane, intersect);
+      if (intersect) {
+        this.dragOffset.subVectors((hitMesh as THREE.Object3D).position, intersect);
+      }
+    }
+  };
+
+  onPointerMove = (event: PointerEvent) => {
+    if (!this.isDragging || !this.draggedObjectId) return;
+
+    this.updateMouseFromEvent(event);
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+
+    const intersect = new THREE.Vector3();
+    this.raycaster.ray.intersectPlane(this.dragPlane, intersect);
+    if (!intersect) return;
+
+    // Apply offset
+    intersect.add(this.dragOffset);
+
+    // Clamp to room bounds
+    const r = this.project.room;
+    intersect.x = Math.max(-r.width / 2, Math.min(r.width / 2, intersect.x));
+    intersect.z = Math.max(-r.length / 2, Math.min(r.length / 2, intersect.z));
+    // Clamp height too
+    let yMin = 0;
+    let yMax = r.height;
+    if (this.draggedObjectId === "source") {
+      yMin = 0;
+      yMax = r.height;
+    }
+    intersect.y = Math.max(yMin, Math.min(yMax, intersect.y));
+
+    const belugaPos = this.threeToBeluga(intersect);
+
+    if (this.draggedObjectId === "listener") {
+      // Move listener mesh
+      if (this.listenerMesh) this.listenerMesh.position.copy(intersect);
+      if (this.listenerArrow) this.listenerArrow.position.copy(intersect);
+      if (this.onListenerMove) this.onListenerMove(belugaPos);
+    } else if (this.draggedObjectId === "source") {
+      // Move source mesh
+      if (this.sourceMesh) this.sourceMesh.position.copy(intersect);
+
+      // Compute new azimuth/distance relative to listener
+      const listener = this.project.listeners[0];
+      if (listener) {
+        // Beluga coords difference
+        const dx = belugaPos.x - listener.position.x;
+        const dy = belugaPos.y - listener.position.y;
+        const dz = belugaPos.z - listener.position.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        let az = (Math.atan2(dx, dy) * 180) / Math.PI;
+        while (az > 180) az -= 360;
+        while (az <= -180) az += 360;
+        this.project.virtualSource.azimuth = az;
+        this.project.virtualSource.distance = dist;
+        if (this.onSourceMove) this.onSourceMove(az, dist);
+      }
+      this.updateGainVisualization();
+    } else if (this.draggedObjectId.startsWith("speaker") === false) {
+      // It's a speaker ID (UUID)
+      const mesh = this.speakerMeshes.find((m) => m.userData.id === this.draggedObjectId);
+      if (mesh) mesh.position.copy(intersect);
+      if (this.onSpeakerMove) this.onSpeakerMove(this.draggedObjectId!, belugaPos);
+    }
+  };
+
+  onPointerUp = (event: PointerEvent) => {
+    if (this.isDragging) {
+      this.isDragging = false;
+      this.draggedObjectId = null;
+      this.orbitControls.enabled = true;
+    } else if (this.placementMode === "none") {
+      // Check if this was just a click (not a drag) on empty space → deselect
+      const moved = Math.abs(event.clientX - this.pointerDownPos.x) + Math.abs(event.clientY - this.pointerDownPos.y);
+      const elapsed = Date.now() - this.pointerDownTime;
+      if (moved < 5 && elapsed < 300) {
+        // Quick click without drag
+        this.updateMouseFromEvent(event);
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        const allHits = [
+          ...this.raycaster.intersectObjects(this.speakerMeshes, false),
+          ...(this.listenerMesh ? this.raycaster.intersectObject(this.listenerMesh, false) : []),
+          ...(this.sourceMesh ? this.raycaster.intersectObject(this.sourceMesh, false) : []),
+        ];
+        if (allHits.length === 0) {
+          // Clicked empty space — deselect
+          this.selectObject(null);
+        }
+      }
+    }
+  };
+
+  private updateMouseFromEvent(event: PointerEvent) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  }
+
+  // --- Camera views ---
 
   setView(view: CameraView) {
     this.currentView = view;
-    const listener = this.project.listeners[0];
     switch (view) {
       case "orbit":
-        this.camera.position.set(6, 6, 5);
-        this.orbitControls.target.set(0, 0, 1);
-        this.orbitControls.enabled = true;
+        this.camera.position.set(6, 5, 7);
+        this.orbitControls.target.set(0, 1, 0);
         break;
       case "top":
-        this.camera.position.set(0, 10, 0.01);
+        this.camera.position.set(0, 15, 0.01);
         this.orbitControls.target.set(0, 0, 0);
-        this.orbitControls.enabled = true;
         break;
       case "front":
-        this.camera.position.set(0, -6, 1.5);
-        this.orbitControls.target.set(0, 0, 1.5);
-        this.orbitControls.enabled = true;
+        this.camera.position.set(0, 2, -8);
+        this.orbitControls.target.set(0, 1.2, 0);
         break;
       case "listener": {
+        const listener = this.project.listeners[0];
         if (listener) {
+          const tp = this.belugaToThree(listener.position);
           const yawRad = (listener.orientation.yaw * Math.PI) / 180;
-          const px = listener.position.x;
-          const py = listener.position.y;
-          const pz = listener.position.z;
-          // Camera at listener position, looking forward (yaw direction)
-          const forwardX = Math.sin(yawRad);
-          const forwardY = Math.cos(yawRad);
-          // Three.js coords: x -> X, y -> Z (height), z -> -Y
-          this.camera.position.set(px, pz, -py);
-          this.camera.lookAt(
-            px + forwardX * 2,
-            pz,
-            -(py + forwardY * 2)
-          );
-          this.orbitControls.target.set(
-            px + forwardX * 2,
-            pz,
-            -(py + forwardY * 2)
-          );
-          this.orbitControls.enabled = true;
+          // Forward in Three.js: sin(yaw) in X, -cos(yaw) in Z
+          const forward = new THREE.Vector3(Math.sin(yawRad), 0, -Math.cos(yawRad));
+          this.camera.position.copy(tp);
+          this.orbitControls.target.copy(tp).add(forward.multiplyScalar(2));
         }
         break;
       }
@@ -460,44 +648,15 @@ export class BelugaScene {
     this.orbitControls.update();
   }
 
-  // --- Placement ---
+  // --- Placement mode ---
 
   setPlacementMode(mode: "none" | "speaker") {
     this.placementMode = mode;
   }
 
-  onCanvasClick = (event: MouseEvent) => {
-    if (this.placementMode !== "speaker") return;
-
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    this.raycaster.setFromCamera(this.mouse, this.camera);
-
-    // Raycast against room floor and room walls
-    const intersects = this.raycaster.intersectObjects(this.roomGroup.children, true);
-    if (intersects.length > 0) {
-      const point = intersects[0].point;
-      // Convert Three.js coords to Beluga world coords (X->X, Z->Y, Y->Z)
-      const belugaPos = { x: point.x, y: -point.z, z: point.y };
-      // Signal to React that a speaker should be placed here
-      if (this.onObjectMove) {
-        // Use a special callback: place new speaker
-        this.onObjectMove("__new_speaker__", belugaPos);
-      }
-    }
-
-    this.placementMode = "none";
-  };
-
-  onPointerMove = (_event: PointerEvent) => {
-    // Could add hover effects here
-  };
-
   // --- Gain visualization ---
 
-  updateSceneUpdate() {
+  updateGainVisualization() {
     if (!this.onSceneUpdate) return;
 
     const listener = this.project.listeners[0];
@@ -506,7 +665,6 @@ export class BelugaScene {
       return;
     }
 
-    // Compute gains using VBAP
     const positions = this.project.speakers.map((s) => s.position);
     const result = computeSpeakerGains(
       positions,
@@ -515,27 +673,25 @@ export class BelugaScene {
       this.project.virtualSource.azimuth
     );
 
-    // Update speaker colors based on gain
+    // Update speaker visual: color intensity + scale based on gain
     for (let i = 0; i < this.speakerMeshes.length; i++) {
       const mesh = this.speakerMeshes[i];
       const gain = result.gains[i] || 0;
-      // Interpolate from dim green (0x224422) to bright green (0x44ff88) based on gain
-      const r = 0x22 + (0x44 - 0x22) * gain;
-      const g = 0x44 + (0xff - 0x44) * gain;
-      const b = 0x22 + (0x88 - 0x22) * gain;
+      // Apple blue (0x007aff) to bright cyan (0x32d4ff) gradient
+      const r = 0x00 + (0x32 - 0x00) * gain;
+      const g = 0x7a + (0xd4 - 0x7a) * gain;
+      const b = 0xff;
       (mesh.material as THREE.MeshPhongMaterial).color.setRGB(r / 255, g / 255, b / 255);
-      // Scale by gain
-      const scale = 0.15 + 0.1 * gain;
+      // Scale: bigger when more gain
+      const scale = 0.18 + 0.12 * gain;
       mesh.scale.setScalar(scale);
     }
 
-    if (this.onSceneUpdate) {
-      this.onSceneUpdate({
-        speakerGains: result.gains,
-        speakerAzimuths: result.azimuths,
-        speakerDistances: result.distances,
-      });
-    }
+    this.onSceneUpdate({
+      speakerGains: result.gains,
+      speakerAzimuths: result.azimuths,
+      speakerDistances: result.distances,
+    });
   }
 
   // --- Lifecycle ---
@@ -557,10 +713,10 @@ export class BelugaScene {
   dispose() {
     if (this.animationId !== null) cancelAnimationFrame(this.animationId);
     this.resizeObserver?.disconnect();
-    this.renderer.domElement.removeEventListener("click", this.onCanvasClick);
+    this.renderer.domElement.removeEventListener("pointerdown", this.onPointerDown);
     this.renderer.domElement.removeEventListener("pointermove", this.onPointerMove);
+    this.renderer.domElement.removeEventListener("pointerup", this.onPointerUp);
     this.orbitControls.dispose();
-    this.transformControls.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);
@@ -573,6 +729,6 @@ export class BelugaScene {
     this.rebuildSpeakers();
     this.buildListener();
     this.buildSource();
-    this.updateSceneUpdate();
+    this.updateGainVisualization();
   }
 }

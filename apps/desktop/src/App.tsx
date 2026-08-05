@@ -2,60 +2,43 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { BelugaScene, CameraView, SceneUpdate } from "./three/BelugaScene";
 import {
   BelugaProject,
-  Speaker,
   createDefaultProject,
   createSpeaker,
-  SPEAKER_CATEGORIES,
   Vector3,
 } from "./types/project";
-
-type TransformMode = "translate" | "rotate";
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<BelugaScene | null>(null);
   const [project, setProject] = useState<BelugaProject>(createDefaultProject());
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [transformMode, setTransformMode] = useState<TransformMode>("translate");
   const [sceneUpdate, setSceneUpdate] = useState<SceneUpdate>({
     speakerGains: [],
     speakerAzimuths: [],
     speakerDistances: [],
   });
-  const [placementMode, setPlacementMode] = useState(false);
-  const [editingRoom, setEditingRoom] = useState({ ...project.room });
+  const [placingSpeaker, setPlacingSpeaker] = useState(false);
+  const [currentView, setCurrentView] = useState<CameraView>("orbit");
   const speakerCounter = useRef(0);
 
-  // Initialize Three.js scene
+  // Init scene
   useEffect(() => {
     if (!containerRef.current) return;
     const scene = new BelugaScene(containerRef.current, project);
     sceneRef.current = scene;
 
     scene.onSelectionChange = (id) => setSelectedId(id);
-    scene.onObjectMove = (id, pos) => {
-      if (id === "__new_speaker__") {
-        // Place new speaker
-        speakerCounter.current += 1;
-        const newSpeaker = createSpeaker(
-          `Speaker ${speakerCounter.current}`,
-          pos
-        );
-        scene.addSpeaker(newSpeaker);
-        setProject((prev) => ({
-          ...prev,
-          speakers: [...prev.speakers, newSpeaker],
-        }));
-        scene.selectObject(newSpeaker.id);
-      } else {
-        // Update existing speaker position
-        setProject((prev) => ({
-          ...prev,
-          speakers: prev.speakers.map((s) =>
-            s.id === id ? { ...s, position: pos } : s
-          ),
-        }));
-      }
+    scene.onSpeakerMove = (id, pos) => {
+      setProject((prev) => ({
+        ...prev,
+        speakers: prev.speakers.map((s) => (s.id === id ? { ...s, position: pos } : s)),
+      }));
+    };
+    scene.onListenerMove = (pos) => {
+      setProject((prev) => ({
+        ...prev,
+        listeners: prev.listeners.map((l, i) => (i === 0 ? { ...l, position: pos } : l)),
+      }));
     };
     scene.onSourceMove = (azimuth, distance) => {
       setProject((prev) => ({
@@ -63,10 +46,20 @@ export default function App() {
         virtualSource: { ...prev.virtualSource, azimuth, distance },
       }));
     };
+    scene.onPlacementRequest = (pos) => {
+      speakerCounter.current += 1;
+      const speaker = createSpeaker(`Speaker ${speakerCounter.current}`, pos);
+      scene.addSpeaker(speaker);
+      setProject((prev) => ({
+        ...prev,
+        speakers: [...prev.speakers, speaker],
+      }));
+      scene.selectObject(speaker.id);
+      setPlacingSpeaker(false);
+    };
     scene.onSceneUpdate = (update) => setSceneUpdate(update);
 
-    // Build initial scene update
-    scene.updateSceneUpdate();
+    scene.updateGainVisualization();
 
     return () => {
       scene.dispose();
@@ -74,20 +67,8 @@ export default function App() {
     };
   }, []);
 
-  // Sync project changes to scene
-  const syncScene = useCallback(() => {
-    if (sceneRef.current) {
-      sceneRef.current.project = project;
-      sceneRef.current.rebuildSpeakers();
-      sceneRef.current.buildListener();
-      sceneRef.current.buildSource();
-      sceneRef.current.updateSceneUpdate();
-    }
-  }, [project]);
-
-  // Actions
   const handleAddSpeaker = () => {
-    setPlacementMode(true);
+    setPlacingSpeaker(true);
     sceneRef.current?.setPlacementMode("speaker");
   };
 
@@ -102,23 +83,16 @@ export default function App() {
 
   const handleSelectSpeaker = (id: string) => {
     sceneRef.current?.selectObject(id);
-    setSelectedId(id);
-  };
-
-  const handleSetTransformMode = (mode: TransformMode) => {
-    setTransformMode(mode);
-    sceneRef.current?.setTransformMode(mode);
   };
 
   const handleSetView = (view: CameraView) => {
+    setCurrentView(view);
     sceneRef.current?.setView(view);
   };
 
-  const handleRoomChange = (field: keyof typeof editingRoom, value: number) => {
-    const newRoom = { ...editingRoom, [field]: value };
-    setEditingRoom(newRoom);
+  const handleRoomChange = (field: keyof typeof project.room, value: number) => {
     setProject((prev) => {
-      const updated = { ...prev, room: newRoom };
+      const updated = { ...prev, room: { ...prev.room, [field]: value } };
       if (sceneRef.current) {
         sceneRef.current.project = updated;
         sceneRef.current.buildRoom();
@@ -130,9 +104,7 @@ export default function App() {
   const handleSpeakerNameChange = (id: string, name: string) => {
     setProject((prev) => ({
       ...prev,
-      speakers: prev.speakers.map((s) =>
-        s.id === id ? { ...s, name } : s
-      ),
+      speakers: prev.speakers.map((s) => (s.id === id ? { ...s, name } : s)),
     }));
   };
 
@@ -140,46 +112,16 @@ export default function App() {
     setProject((prev) => ({
       ...prev,
       speakers: prev.speakers.map((s) =>
-        s.id === id
-          ? { ...s, position: { ...s.position, [field]: value } }
-          : s
+        s.id === id ? { ...s, position: { ...s.position, [field]: value } } : s
       ),
     }));
     const speaker = project.speakers.find((s) => s.id === id);
     if (speaker) {
-      sceneRef.current?.updateSpeakerPosition(id, {
-        ...speaker.position,
-        [field]: value,
-      });
+      sceneRef.current?.updateSpeakerPosition(id, { ...speaker.position, [field]: value });
     }
   };
 
-  const handleSpeakerOrientChange = (
-    id: string,
-    field: "yaw" | "pitch" | "roll",
-    value: number
-  ) => {
-    setProject((prev) => ({
-      ...prev,
-      speakers: prev.speakers.map((s) =>
-        s.id === id
-          ? { ...s, orientation: { ...s.orientation, [field]: value } }
-          : s
-      ),
-    }));
-    const speaker = project.speakers.find((s) => s.id === id);
-    if (speaker) {
-      sceneRef.current?.updateSpeakerOrientation(id, {
-        ...speaker.orientation,
-        [field]: value,
-      });
-    }
-  };
-
-  const handleListenerChange = (
-    field: "x" | "y" | "z",
-    value: number
-  ) => {
+  const handleListenerChange = (field: keyof Vector3, value: number) => {
     setProject((prev) => ({
       ...prev,
       listeners: prev.listeners.map((l, i) =>
@@ -188,41 +130,43 @@ export default function App() {
     }));
     const listener = project.listeners[0];
     if (listener) {
-      sceneRef.current?.updateListenerPosition({
-        ...listener.position,
-        [field]: value,
-      });
+      sceneRef.current?.updateListenerPosition?.({ ...listener.position, [field]: value });
     }
   };
 
-  const handleListenerOrientChange = (field: "yaw" | "pitch" | "roll", value: number) => {
+  const handleListenerYaw = (value: number) => {
     setProject((prev) => ({
       ...prev,
       listeners: prev.listeners.map((l, i) =>
-        i === 0 ? { ...l, orientation: { ...l.orientation, [field]: value } } : l
+        i === 0 ? { ...l, orientation: { ...l.orientation, yaw: value } } : l
       ),
     }));
     const listener = project.listeners[0];
     if (listener) {
-      sceneRef.current?.updateListenerOrientation({
-        ...listener.orientation,
-        [field]: value,
-      });
+      sceneRef.current?.updateListenerOrientation?.({ ...listener.orientation, yaw: value });
     }
   };
 
-  const handleSourceChange = (field: "azimuth" | "distance", value: number) => {
-    const updated = { ...project.virtualSource, [field]: value };
+  const handleSourceAzimuth = (value: number) => {
+    const dist = project.virtualSource.distance;
     setProject((prev) => ({
       ...prev,
-      virtualSource: updated,
+      virtualSource: { ...prev.virtualSource, azimuth: value },
     }));
-    sceneRef.current?.updateSource(updated.azimuth, updated.distance);
+    sceneRef.current?.updateSource(value, dist);
   };
 
-  const handleSaveProject = async () => {
+  const handleSourceDistance = (value: number) => {
+    const az = project.virtualSource.azimuth;
+    setProject((prev) => ({
+      ...prev,
+      virtualSource: { ...prev.virtualSource, distance: value },
+    }));
+    sceneRef.current?.updateSource(az, value);
+  };
+
+  const handleSaveProject = () => {
     const json = JSON.stringify(project, null, 2);
-    // Use Tauri dialog + fs or fallback to download
     const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -232,7 +176,7 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const handleLoadProject = async () => {
+  const handleImport = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json,.glb";
@@ -254,304 +198,193 @@ export default function App() {
 
   const selectedSpeaker = project.speakers.find((s) => s.id === selectedId);
   const listener = project.listeners[0];
+  const maxAz = 180;
+  const minDist = 0.5;
+  const maxDist = 8;
 
   return (
     <div className="app-layout">
       {/* Sidebar */}
       <div className="sidebar">
-        <h1 style={{ fontSize: 18, color: "#88bbff" }}>🐋 Beluga</h1>
-
-        {/* Room */}
-        <div className="sidebar-section">
-          <h2>Room</h2>
-          <div className="input-row">
-            <label>Length (Y)</label>
-            <input
-              type="number"
-              step="0.1"
-              value={editingRoom.length}
-              onChange={(e) => handleRoomChange("length", parseFloat(e.target.value) || 0)}
-            />
-            <span style={{ fontSize: 11, color: "#666" }}>m</span>
-          </div>
-          <div className="input-row">
-            <label>Width (X)</label>
-            <input
-              type="number"
-              step="0.1"
-              value={editingRoom.width}
-              onChange={(e) => handleRoomChange("width", parseFloat(e.target.value) || 0)}
-            />
-            <span style={{ fontSize: 11, color: "#666" }}>m</span>
-          </div>
-          <div className="input-row">
-            <label>Height (Z)</label>
-            <input
-              type="number"
-              step="0.1"
-              value={editingRoom.height}
-              onChange={(e) => handleRoomChange("height", parseFloat(e.target.value) || 0)}
-            />
-            <span style={{ fontSize: 11, color: "#666" }}>m</span>
-          </div>
+        <div className="sidebar-header">
+          <h1>🐋 Beluga</h1>
         </div>
+        <div className="sidebar-content">
+          {/* Room */}
+          <div className="section">
+            <div className="section-title">Room</div>
+            <div className="input-group">
+              <label>Length</label>
+              <input type="number" step="0.1" value={project.room.length}
+                onChange={(e) => handleRoomChange("length", parseFloat(e.target.value) || 0)} />
+              <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>m</span>
+            </div>
+            <div className="input-group">
+              <label>Width</label>
+              <input type="number" step="0.1" value={project.room.width}
+                onChange={(e) => handleRoomChange("width", parseFloat(e.target.value) || 0)} />
+              <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>m</span>
+            </div>
+            <div className="input-group">
+              <label>Height</label>
+              <input type="number" step="0.1" value={project.room.height}
+                onChange={(e) => handleRoomChange("height", parseFloat(e.target.value) || 0)} />
+              <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>m</span>
+            </div>
+          </div>
 
-        {/* Speakers */}
-        <div className="sidebar-section">
-          <h2>Speakers ({project.speakers.length})</h2>
-          <button
-            className={`btn btn-primary ${placementMode ? "btn-active" : ""}`}
-            onClick={handleAddSpeaker}
-          >
-            {placementMode ? "Click room to place..." : "+ Add Speaker"}
-          </button>
-          <div style={{ marginTop: 8 }}>
+          {/* Speakers */}
+          <div className="section">
+            <div className="section-title">Speakers ({project.speakers.length})</div>
+            <button
+              className={`btn btn-primary ${placingSpeaker ? "placing" : ""}`}
+              style={{ width: "100%", marginBottom: 10 }}
+              onClick={handleAddSpeaker}
+            >
+              {placingSpeaker ? "Click in the 3D view to place →" : "+ Add Speaker"}
+            </button>
+            {project.speakers.length === 0 && (
+              <div className="tip">Click "Add Speaker" then click on the floor to place</div>
+            )}
             {project.speakers.map((sp, i) => (
               <div
                 key={sp.id}
-                className={`speaker-list-item ${selectedId === sp.id ? "selected" : ""}`}
+                className={`spk-card ${selectedId === sp.id ? "selected" : ""}`}
                 onClick={() => handleSelectSpeaker(sp.id)}
               >
-                <div>
-                  <div style={{ fontSize: 13 }}>{sp.name}</div>
-                  <div className="speaker-info">
-                    ({sp.position.x.toFixed(1)}, {sp.position.y.toFixed(1)}, {sp.position.z.toFixed(1)})
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <div className="spk-dot" style={{
+                    background: `rgb(${0 + (50 - 0) * (sceneUpdate.speakerGains[i] || 0)}, ${122 + (200 - 122) * (sceneUpdate.speakerGains[i] || 0)}, 255)`,
+                  }} />
+                  <div>
+                    <div className="spk-name-text">{sp.name}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-tertiary)" }}>
+                      {(sceneUpdate.speakerAzimuths[i] || 0).toFixed(0)}° · {(sceneUpdate.speakerDistances[i] || 0).toFixed(1)}m
+                    </div>
                   </div>
                 </div>
-                <button
-                  className="btn btn-danger"
-                  style={{ fontSize: 11, padding: "2px 8px" }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRemoveSpeaker(sp.id);
-                  }}
-                >
-                  ×
+                <button className="remove-btn" onClick={(e) => { e.stopPropagation(); handleRemoveSpeaker(sp.id); }}>
+                  Remove
                 </button>
               </div>
             ))}
           </div>
-        </div>
 
-        {/* Selected speaker editor */}
-        {selectedSpeaker && (
-          <div className="sidebar-section">
-            <h2>Edit: {selectedSpeaker.name}</h2>
-            <div className="input-row">
-              <label>Name</label>
-              <input
-                type="text"
-                value={selectedSpeaker.name}
-                onChange={(e) => handleSpeakerNameChange(selectedSpeaker.id, e.target.value)}
-                style={{ width: 120 }}
-              />
+          {/* Selected speaker editor */}
+          {selectedSpeaker && (
+            <div className="section">
+              <div className="section-title">{selectedSpeaker.name}</div>
+              <div className="input-group">
+                <label>Name</label>
+                <input type="text" value={selectedSpeaker.name}
+                  onChange={(e) => handleSpeakerNameChange(selectedSpeaker.id, e.target.value)} />
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>
+                Drag the speaker in the 3D view to reposition
+              </div>
+              <div className="input-group">
+                <label>X</label>
+                <input type="number" step="0.01" value={selectedSpeaker.position.x.toFixed(2)}
+                  onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "x", parseFloat(e.target.value) || 0)} />
+                <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>m</span>
+              </div>
+              <div className="input-group">
+                <label>Y</label>
+                <input type="number" step="0.01" value={selectedSpeaker.position.y.toFixed(2)}
+                  onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "y", parseFloat(e.target.value) || 0)} />
+                <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>m</span>
+              </div>
+              <div className="input-group">
+                <label>Height</label>
+                <input type="number" step="0.01" value={selectedSpeaker.position.z.toFixed(2)}
+                  onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "z", parseFloat(e.target.value) || 0)} />
+                <span style={{ fontSize: 13, color: "var(--text-tertiary)" }}>m</span>
+              </div>
             </div>
-            <div className="input-row">
-              <label>X (m)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={selectedSpeaker.position.x}
-                onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "x", parseFloat(e.target.value) || 0)}
-              />
+          )}
+
+          {/* Listener */}
+          {listener && (
+            <div className="section">
+              <div className="section-title">Listener</div>
+              <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>
+                Drag the listener in the 3D view to reposition
+              </div>
+              <div className="slider-row">
+                <label>Facing</label>
+                <input type="range" min={-180} max={180} step="1" value={listener.orientation.yaw}
+                  onChange={(e) => handleListenerYaw(parseFloat(e.target.value))} />
+                <span className="value">{listener.orientation.yaw.toFixed(0)}°</span>
+              </div>
             </div>
-            <div className="input-row">
-              <label>Y (m)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={selectedSpeaker.position.y}
-                onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "y", parseFloat(e.target.value) || 0)}
-              />
+          )}
+
+          {/* Virtual source */}
+          <div className="section">
+            <div className="section-title">Virtual Source</div>
+            <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginBottom: 8 }}>
+              Drag the purple sphere in the 3D view to move
             </div>
-            <div className="input-row">
-              <label>Z (m)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={selectedSpeaker.position.z}
-                onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "z", parseFloat(e.target.value) || 0)}
-              />
+            <div className="slider-row">
+              <label>Azimuth</label>
+              <input type="range" min={-180} max={180} step="1" value={project.virtualSource.azimuth}
+                onChange={(e) => handleSourceAzimuth(parseFloat(e.target.value))} />
+              <span className="value">{project.virtualSource.azimuth.toFixed(0)}°</span>
             </div>
-            <h2 style={{ marginTop: 8 }}>Orientation</h2>
-            <div className="input-row">
-              <label>Yaw°</label>
-              <input
-                type="number"
-                step="1"
-                value={selectedSpeaker.orientation.yaw}
-                onChange={(e) => handleSpeakerOrientChange(selectedSpeaker.id, "yaw", parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <div className="input-row">
-              <label>Pitch°</label>
-              <input
-                type="number"
-                step="1"
-                value={selectedSpeaker.orientation.pitch}
-                onChange={(e) => handleSpeakerOrientChange(selectedSpeaker.id, "pitch", parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <div className="input-row">
-              <label>Roll°</label>
-              <input
-                type="number"
-                step="1"
-                value={selectedSpeaker.orientation.roll}
-                onChange={(e) => handleSpeakerOrientChange(selectedSpeaker.id, "roll", parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <div className="transform-mode-btns">
-              <button
-                className={`btn ${transformMode === "translate" ? "btn-active" : ""}`}
-                onClick={() => handleSetTransformMode("translate")}
-              >
-                Move
-              </button>
-              <button
-                className={`btn ${transformMode === "rotate" ? "btn-active" : ""}`}
-                onClick={() => handleSetTransformMode("rotate")}
-              >
-                Rotate
-              </button>
+            <div className="slider-row">
+              <label>Distance</label>
+              <input type="range" min={minDist} max={maxDist} step="0.1" value={project.virtualSource.distance}
+                onChange={(e) => handleSourceDistance(parseFloat(e.target.value))} />
+              <span className="value">{project.virtualSource.distance.toFixed(1)}m</span>
             </div>
           </div>
-        )}
 
-        {/* Listener */}
-        {listener && (
-          <div className="sidebar-section">
-            <h2>Listener</h2>
-            <div className="input-row">
-              <label>X (m)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={listener.position.x}
-                onChange={(e) => handleListenerChange("x", parseFloat(e.target.value) || 0)}
-              />
+          {/* Project */}
+          <div className="section">
+            <div className="section-title">Project</div>
+            <div className="btn-row">
+              <button className="btn" onClick={handleImport}>Import Room / Load</button>
+              <button className="btn" onClick={handleSaveProject}>Save</button>
             </div>
-            <div className="input-row">
-              <label>Y (m)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={listener.position.y}
-                onChange={(e) => handleListenerChange("y", parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <div className="input-row">
-              <label>Z (m)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={listener.position.z}
-                onChange={(e) => handleListenerChange("z", parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <div className="input-row">
-              <label>Yaw°</label>
-              <input
-                type="number"
-                step="1"
-                value={listener.orientation.yaw}
-                onChange={(e) => handleListenerOrientChange("yaw", parseFloat(e.target.value) || 0)}
-              />
-            </div>
-            <div className="input-row">
-              <label>Ear Ht</label>
-              <input
-                type="number"
-                step="0.01"
-                value={listener.earHeight}
-                onChange={(e) => {
-                  setProject((prev) => ({
-                    ...prev,
-                    listeners: prev.listeners.map((l, i) =>
-                      i === 0 ? { ...l, earHeight: parseFloat(e.target.value) || 0 } : l
-                    ),
-                  }));
-                }}
-              />
-              <span style={{ fontSize: 11, color: "#666" }}>m</span>
-            </div>
-          </div>
-        )}
-
-        {/* Virtual source */}
-        <div className="sidebar-section">
-          <h2>Virtual Source</h2>
-          <div className="input-row">
-            <label>Azimuth°</label>
-            <input
-              type="number"
-              step="1"
-              value={project.virtualSource.azimuth}
-              onChange={(e) => handleSourceChange("azimuth", parseFloat(e.target.value) || 0)}
-            />
-          </div>
-          <div className="input-row">
-            <label>Dist (m)</label>
-            <input
-              type="number"
-              step="0.1"
-              value={project.virtualSource.distance}
-              onChange={(e) => handleSourceChange("distance", parseFloat(e.target.value) || 0)}
-            />
-          </div>
-        </div>
-
-        {/* Project actions */}
-        <div className="sidebar-section">
-          <h2>Project</h2>
-          <div className="btn-group">
-            <button className="btn" onClick={handleSaveProject}>
-              Save
-            </button>
-            <button className="btn" onClick={handleLoadProject}>
-              Load / Import
-            </button>
           </div>
         </div>
       </div>
 
       {/* 3D Viewport */}
-      <div className="viewport-container" ref={containerRef}>
+      <div className="viewport" ref={containerRef}>
         {/* Gain overlay */}
-        <div className="gain-overlay">
+        <div className="glass-overlay gain-panel">
           <h3>Speaker Gains</h3>
           {project.speakers.length === 0 ? (
-            <div style={{ fontSize: 12, color: "#666" }}>Add speakers to see gains</div>
+            <div style={{ fontSize: 13, color: "var(--text-tertiary)" }}>Add speakers to see gains</div>
           ) : (
             project.speakers.map((sp, i) => {
               const gain = sceneUpdate.speakerGains[i] || 0;
               const az = sceneUpdate.speakerAzimuths[i] || 0;
               const dist = sceneUpdate.speakerDistances[i] || 0;
               return (
-                <div key={sp.id} className="gain-bar-row">
-                  <span className="name">{sp.name}</span>
-                  <div className="gain-bar-container">
-                    <div
-                      className="gain-bar"
-                      style={{ width: `${gain * 100}%` }}
-                    />
+                <div key={sp.id} className="gain-row">
+                  <span className="spk-name">{sp.name}</span>
+                  <div className="gain-bar-bg">
+                    <div className="gain-bar-fill" style={{ width: `${gain * 100}%` }} />
                   </div>
-                  <span className="value">{gain.toFixed(3)}</span>
-                  <span style={{ fontSize: 10, color: "#666", minWidth: 60 }}>
-                    {az.toFixed(0)}° {dist.toFixed(1)}m
-                  </span>
+                  <span className="gain-val">{gain.toFixed(2)}</span>
+                  <span className="spk-info">{az.toFixed(0)}° {dist.toFixed(1)}m</span>
                 </div>
               );
             })
           )}
         </div>
 
-        {/* Camera controls */}
-        <div className="camera-controls">
-          <button className="btn" onClick={() => handleSetView("orbit")}>Orbit</button>
-          <button className="btn" onClick={() => handleSetView("top")}>Top</button>
-          <button className="btn" onClick={() => handleSetView("front")}>Front</button>
-          <button className="btn" onClick={() => handleSetView("listener")}>Listener</button>
+        {/* Camera toolbar */}
+        <div className="glass-overlay cam-toolbar">
+          {(["orbit", "top", "front", "listener"] as CameraView[]).map((v) => (
+            <button key={v}
+              className={`cam-btn ${currentView === v ? "active" : ""}`}
+              onClick={() => handleSetView(v)}>
+              {v.charAt(0).toUpperCase() + v.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
     </div>
