@@ -10,6 +10,7 @@ import {
   SPEAKER_CATEGORIES,
   Vector3,
   Orientation,
+  Speaker,
 } from "./types/project";
 
 export default function App() {
@@ -35,6 +36,16 @@ export default function App() {
     setTimeout(() => {
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 2500);
+  };
+
+  /** Keep auto-naming counter aligned with existing speakers (imports, presets, removals) */
+  const syncSpeakerCounter = (speakers: Speaker[]) => {
+    let max = speakers.length;
+    for (const s of speakers) {
+      const m = /^Speaker (\d+)$/.exec(s.name);
+      if (m) max = Math.max(max, parseInt(m[1], 10));
+    }
+    speakerCounter.current = max;
   };
 
   // Initialize BelugaScene 3D Viewport
@@ -309,6 +320,7 @@ export default function App() {
   const executePreset = (presetFn: (p: BelugaProject) => BelugaProject, name: string) => {
     const updated = presetFn(project);
     setProject(updated);
+    syncSpeakerCounter(updated.speakers);
     if (sceneRef.current) {
       sceneRef.current.updateProject(updated);
     }
@@ -319,6 +331,7 @@ export default function App() {
   const handleClearSpeakers = () => {
     const updated = { ...project, speakers: [] };
     setProject(updated);
+    syncSpeakerCounter([]);
     if (sceneRef.current) {
       sceneRef.current.updateProject(updated);
       sceneRef.current.selectObject("listener");
@@ -346,16 +359,28 @@ export default function App() {
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      if (file.name.endsWith(".json")) {
-        const text = await file.text();
-        const loaded = JSON.parse(text) as BelugaProject;
-        setProject(loaded);
-        sceneRef.current?.updateProject(loaded);
-        showToast("Loaded project file");
-      } else if (file.name.endsWith(".glb")) {
-        const buf = await file.arrayBuffer();
-        sceneRef.current?.loadGLB(buf);
-        showToast("Imported 3D GLB room mesh");
+      try {
+        if (file.name.endsWith(".json")) {
+          const text = await file.text();
+          const loaded = JSON.parse(text) as BelugaProject;
+          // Validate the essential structure to avoid crashing the scene
+          if (!loaded || typeof loaded !== "object" || !Array.isArray(loaded.speakers) || !Array.isArray(loaded.listeners) || !loaded.room || !loaded.virtualSource) {
+            throw new Error("Invalid project file: missing room, speakers, listeners, or virtualSource");
+          }
+          setProject(loaded);
+          sceneRef.current?.updateProject(loaded);
+          // Keep the speaker counter aligned so new placements don't collide with imported names
+          syncSpeakerCounter(loaded.speakers);
+          showToast("Loaded project file");
+        } else if (file.name.endsWith(".glb")) {
+          const buf = await file.arrayBuffer();
+          sceneRef.current?.loadGLB(buf);
+          showToast("Imported 3D GLB room mesh");
+        } else {
+          showToast("Unsupported file type (use .json or .glb)");
+        }
+      } catch (err) {
+        showToast(`Import failed: ${err instanceof Error ? err.message : "unknown error"}`);
       }
     };
     input.click();
