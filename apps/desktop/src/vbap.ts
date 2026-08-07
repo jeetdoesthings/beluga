@@ -1,5 +1,5 @@
 // VBAP math ported from Python beluga/geometry.py + vbap.py for browser-side gain calculation.
-// Spec §18, §31-§33.
+// Spec §18, §31-§33, §35.
 
 import type { Vector3, Orientation } from "./types/project";
 
@@ -67,11 +67,17 @@ export function selectPair(speakerAzimuths: number[], targetAzimuth: number): [n
   const n = speakerAzimuths.length;
   if (n < 2) throw new Error("VBAP 2D requires at least 2 speakers");
 
+  const TWO_PI = 2 * Math.PI;
+  const toRad0To2Pi = (deg: number) => {
+    const r = ((deg * Math.PI) / 180) % TWO_PI;
+    return r < 0 ? r + TWO_PI : r;
+  };
+
   const azs = speakerAzimuths
-    .map((a, idx) => ({ rad: (a * Math.PI) / 180 % (2 * Math.PI), idx }))
+    .map((a, idx) => ({ rad: toRad0To2Pi(a), idx }))
     .sort((a, b) => a.rad - b.rad);
 
-  const t = (targetAzimuth * Math.PI) / 180 % (2 * Math.PI);
+  const t = toRad0To2Pi(targetAzimuth);
 
   for (let k = 0; k < n; k++) {
     const a0 = azs[k];
@@ -83,9 +89,10 @@ export function selectPair(speakerAzimuths: number[], targetAzimuth: number): [n
     }
   }
 
-  // Fallback
-  const best = azs.reduce((min, x) => Math.abs(x.rad - t) < Math.abs(min.rad - t) ? x : min);
-  const nextIdx = azs[(azs.indexOf(best) + 1) % n].idx;
+  // Fallback: return closest pair
+  const best = azs.reduce((min, x) => (Math.abs(x.rad - t) < Math.abs(min.rad - t) ? x : min));
+  const bestIdxInSorted = azs.indexOf(best);
+  const nextIdx = azs[(bestIdxInSorted + 1) % n].idx;
   return [best.idx, nextIdx];
 }
 
@@ -116,7 +123,7 @@ function dot(a: Vector3, b: Vector3): number {
 export function renderVBAP2D(speakerAzimuths: number[], targetAzimuth: number): number[] {
   const n = speakerAzimuths.length;
   if (n === 0) return [];
-  if (n === 1) return [targetAzimuth === speakerAzimuths[0] ? 1 : 0];
+  if (n === 1) return [1.0]; // Fix Bug #5: Single speaker always gets gain 1.0 (mono mode)
 
   const gains = new Array(n).fill(0);
   const speakerDirs = speakerAzimuths.map((a) => azimuthToUnitVector(a));
@@ -141,17 +148,60 @@ export function computeSpeakerGains(
   speakerPositions: Vector3[],
   listenerPos: Vector3,
   listenerOrient: Orientation,
-  sourceAzimuth: number
-): { gains: number[]; azimuths: number[]; distances: number[] } {
+  sourceAzimuth: number,
+  sourceElevation: number = 0
+): { gains: number[]; azimuths: number[]; distances: number[]; elevations: number[] } {
   const azimuths: number[] = [];
   const distances: number[] = [];
+  const elevations: number[] = [];
 
   for (const pos of speakerPositions) {
     const sph = toListenerRelative(pos, listenerPos, listenerOrient);
     azimuths.push(sph.azimuth);
     distances.push(sph.distance);
+    elevations.push(sph.elevation);
   }
 
-  const gains = renderVBAP2D(azimuths, sourceAzimuth);
-  return { gains, azimuths, distances };
+  const n = speakerPositions.length;
+  if (n === 0) return { gains: [], azimuths, distances, elevations };
+  if (n === 1) return { gains: [1.0], azimuths, distances, elevations };
+
+  // Check if height speakers exist (elevation > 15 deg)
+  const heightIndices = elevations.map((e, idx) => (e > 15 ? idx : -1)).filter((i) => i >= 0);
+  const earIndices = elevations.map((e, idx) => (e <= 15 ? idx : -1)).filter((i) => i >= 0);
+
+  let finalGains = new Array(n).fill(0);
+
+  if (heightIndices.length > 0 && earIndices.length > 0) {
+    // Height layer exists! Blend between ear-level layer and height layer based on sourceElevation
+    const heightWeight = Math.min(1.0, Math.max(0.0, sourceElevation / 45.0));
+    const earWeight = 1.0 - heightWeight;
+
+    if (earWeight > 0.001) {
+      const earAzs = earIndices.map((i) => azimuths[i]);
+      const earGains = renderVBAP2D(earAzs, sourceAzimuth);
+      earIndices.forEach((origIdx, localIdx) => {
+        finalGains[origIdx] += earGains[localIdx] * earWeight;
+      });
+    }
+
+    if (heightWeight > 0.001) {
+      const heightAzs = heightIndices.map((i) => azimuths[i]);
+      const heightGains = renderVBAP2D(heightAzs, sourceAzimuth);
+      heightIndices.forEach((origIdx, localIdx) => {
+        finalGains[origIdx] += heightGains[localIdx] * heightWeight;
+      });
+    }
+
+    // Energy normalize final blended gains
+    const norm = Math.sqrt(finalGains.reduce((s, g) => s + g * g, 0));
+    if (norm > 1e-12) {
+      for (let k = 0; k < n; k++) finalGains[k] /= norm;
+    }
+  } else {
+    // 2D mode or single layer
+    finalGains = renderVBAP2D(azimuths, sourceAzimuth);
+  }
+
+  return { gains: finalGains, azimuths, distances, elevations };
 }
