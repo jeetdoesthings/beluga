@@ -139,6 +139,27 @@ export function renderVBAP2D(speakerAzimuths: number[], targetAzimuth: number): 
   const norm = Math.sqrt(gains.reduce((s, g) => s + g * g, 0));
   if (norm > 1e-12) {
     for (let k = 0; k < n; k++) gains[k] /= norm;
+  } else {
+    // Target lies outside the speaker pair arc (e.g. source behind a stereo pair).
+    // Instead of silence, fall back to the nearest speakers weighted by inverse
+    // angular distance so the pan still has directionality.
+    const byDist = speakerAzimuths
+      .map((a, idx) => {
+        let d = Math.abs(a - targetAzimuth);
+        if (d > 180) d = 360 - d;
+        return { d: Math.max(d, 1e-6), idx };
+      })
+      .sort((a, b) => a.d - b.d);
+
+    const nClosest = n >= 2 ? 2 : 1;
+    const w = byDist.slice(0, nClosest).map((s) => ({ idx: s.idx, w: 1 / s.d }));
+    const wSum = w.reduce((s, x) => s + x.w, 0);
+    for (const { idx, w: wi } of w) gains[idx] = wi / wSum;
+
+    const norm2 = Math.sqrt(gains.reduce((s, g) => s + g * g, 0));
+    if (norm2 > 1e-12) {
+      for (let k = 0; k < n; k++) gains[k] /= norm2;
+    }
   }
 
   return gains;
