@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BelugaScene, CameraView, SceneUpdate } from "./three/BelugaScene";
 import {
   BelugaProject,
@@ -47,38 +47,58 @@ export default function App() {
     scene.onTransformModeChange = (mode) => setTransformMode(mode);
 
     scene.onSpeakerMove = (id, pos, orient) => {
-      setProject((prev) => ({
-        ...prev,
-        speakers: prev.speakers.map((s) => (s.id === id ? { ...s, position: pos, orientation: orient } : s)),
-      }));
+      setProject((prev) => {
+        const updated = {
+          ...prev,
+          speakers: prev.speakers.map((s) => (s.id === id ? { ...s, position: pos, orientation: orient } : s)),
+        };
+        // Keep scene's internal project in sync so it doesn't hold stale speaker objects
+        if (sceneRef.current) sceneRef.current.project = updated;
+        return updated;
+      });
     };
 
     scene.onListenerMove = (pos, orient) => {
-      setProject((prev) => ({
-        ...prev,
-        listeners: prev.listeners.map((l, i) => (i === 0 ? { ...l, position: pos, orientation: orient } : l)),
-      }));
+      setProject((prev) => {
+        const updated = {
+          ...prev,
+          listeners: prev.listeners.map((l, i) =>
+            i === 0 ? { ...l, position: pos, orientation: orient, earHeight: pos.z } : l
+          ),
+        };
+        if (sceneRef.current) sceneRef.current.project = updated;
+        return updated;
+      });
     };
 
     scene.onSourceMove = (azimuth, elevation, distance) => {
-      setProject((prev) => ({
-        ...prev,
-        virtualSource: { ...prev.virtualSource, azimuth, elevation, distance },
-      }));
+      setProject((prev) => {
+        const updated = {
+          ...prev,
+          virtualSource: { ...prev.virtualSource, azimuth, elevation, distance },
+        };
+        if (sceneRef.current) sceneRef.current.project = updated;
+        return updated;
+      });
     };
 
     scene.onRoomBoundsChange = (room) => {
-      setProject((prev) => ({ ...prev, room }));
+      setProject((prev) => {
+        const updated = { ...prev, room };
+        if (sceneRef.current) sceneRef.current.project = updated;
+        return updated;
+      });
     };
 
     scene.onPlacementRequest = (pos) => {
       speakerCounter.current += 1;
       const speaker = createSpeaker(`Speaker ${speakerCounter.current}`, pos, "Bookshelf");
       scene.addSpeaker(speaker);
-      setProject((prev) => ({
-        ...prev,
-        speakers: [...prev.speakers, speaker],
-      }));
+      setProject((prev) => {
+        const updated = { ...prev, speakers: [...prev.speakers, speaker] };
+        sceneRef.current!.project = updated;
+        return updated;
+      });
       scene.selectObject(speaker.id);
       setPlacingSpeaker(false);
       showToast(`Added ${speaker.name}`);
@@ -195,9 +215,13 @@ export default function App() {
 
   const handleListenerPosChange = (field: keyof Vector3, value: number) => {
     setProject((prev) => {
-      const updatedListeners = prev.listeners.map((l, i) =>
-        i === 0 ? { ...l, position: { ...l.position, [field]: value } } : l
-      );
+      const updatedListeners = prev.listeners.map((l, i) => {
+        if (i !== 0) return l;
+        const newPos = { ...l.position, [field]: value };
+        // When Z (height) changes via this input, propagate to earHeight too
+        const newEarHeight = field === "z" ? value : l.earHeight;
+        return { ...l, position: newPos, earHeight: newEarHeight };
+      });
       const updated = { ...prev, listeners: updatedListeners };
       const listener = updatedListeners[0];
       if (listener && sceneRef.current) {
