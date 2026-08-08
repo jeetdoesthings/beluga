@@ -1,0 +1,15 @@
+[package]
+name = "beluga-audio-io"
+version = "0.3.0"
+edition = "2021"
+
+[dependencies]
+cpal = "0.16"
+beluga-core = { path = "../beluga-core" }
+beluga-dsp = { path = "../beluga-dsp" }
+beluga-spatial = { path = "../beluga-spatial" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+hardware-tests = []

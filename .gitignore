@@ -30,7 +30,11 @@ Thumbs.db
 *.pyc
 research/python/beluga.egg-info/
 
-# Desktop app (0.2)
+# Desktop app
 apps/desktop/node_modules/
 apps/desktop/dist/
 apps/desktop/src-tauri/target/
+apps/desktop/.vite/
+
+# Rust build artifacts (workspace)
+target/

@@ -12,6 +12,19 @@ import {
   Orientation,
   Speaker,
 } from "./types/project";
+import { ScrubInput } from "./components/ScrubInput";
+import { SnapSlider } from "./components/SnapSlider";
+import { DraggableWindow } from "./components/DraggableWindow";
+import { AudioControls } from "./components/AudioControls";
+import {
+  enumerateAudioDevices,
+  startPlayback,
+  stopPlayback,
+  setSourcePosition,
+  getTelemetry,
+  type AudioDevice,
+  type Telemetry,
+} from "./audio";
 
 /* ═══════════════════════════════════════════════════════════════════════════
    CLEAN INLINE SVG ICONS
@@ -28,14 +41,6 @@ const Icons = {
   Plus: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  ),
-  Presets: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="3" width="7" height="7" rx="1.5" />
-      <rect x="14" y="14" width="7" height="7" rx="1.5" />
-      <rect x="3" y="14" width="7" height="7" rx="1.5" />
     </svg>
   ),
   Trash: () => (
@@ -113,19 +118,9 @@ const Icons = {
       <path d="M12 2v20M17 5v14M7 5v14M22 9v6M2 9v6" />
     </svg>
   ),
-  Close: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  ),
   ChevronDown: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9" />
-    </svg>
-  ),
-  ChevronUp: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="18 15 12 9 6 15" />
     </svg>
   ),
 };
@@ -135,6 +130,8 @@ export default function App() {
   const sceneRef = useRef<BelugaScene | null>(null);
   const [project, setProject] = useState<BelugaProject>(createDefaultProject());
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showRoomWindow, setShowRoomWindow] = useState(true);
+  const [showGainsWindow, setShowGainsWindow] = useState(true);
   const [sceneUpdate, setSceneUpdate] = useState<SceneUpdate>({
     speakerGains: [],
     speakerAzimuths: [],
@@ -146,9 +143,13 @@ export default function App() {
   const [transformMode, setTransformMode] = useState<"translate" | "rotate" | "scale">("translate");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [confirmPreset, setConfirmPreset] = useState<{ name: string; fn: (p: BelugaProject) => BelugaProject } | null>(null);
-  const [bottomTab, setBottomTab] = useState<"room" | "listener" | "source">("room");
-  const [isDockCollapsed, setIsDockCollapsed] = useState(false);
   const speakerCounter = useRef(0);
+  const [audioDevices, setAudioDevices] = useState<import("./audio").AudioDevice[]>([]);
+  const [selectedDevice, setSelectedDevice] = useState<string>("");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [telemetry, setTelemetry] = useState<import("./audio").Telemetry | null>(null);
+  const [showAudioWindow, setShowAudioWindow] = useState(true);
+  const telemetryInterval = useRef<number | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -174,8 +175,6 @@ export default function App() {
 
     scene.onSelectionChange = (id) => {
       setSelectedId(id);
-      if (id === "listener") setBottomTab("listener");
-      else if (id === "source") setBottomTab("source");
     };
 
     scene.onTransformModeChange = (mode) => setTransformMode(mode);
@@ -246,6 +245,111 @@ export default function App() {
     };
   }, []);
 
+  // ─── Audio engine: enumerate devices on mount ─────────────────────────────
+  useEffect(() => {
+    const loadDevices = async () => {
+      try {
+        const devices = await enumerateAudioDevices();
+        setAudioDevices(devices);
+        const defaultDev = devices.find((d) => d.id === "default" || d.is_default);
+        if (defaultDev) {
+          setSelectedDevice(defaultDev.id);
+        } else if (devices.length > 0) {
+          setSelectedDevice(devices[0].id);
+        }
+      } catch (e) {
+        console.error("Failed to enumerate audio devices:", e);
+      }
+    };
+    loadDevices();
+
+    return () => {
+      if (telemetryInterval.current) {
+        clearInterval(telemetryInterval.current);
+      }
+    };
+  }, []);
+
+  // ─── Audio control handlers ───────────────────────────────────────────────
+  const handleStartPlayback = async () => {
+    if (project.speakers.length === 0) {
+      showToast("Add speakers before playing");
+      return;
+    }
+    try {
+      await startPlayback(project, selectedDevice);
+      setIsPlaying(true);
+      showToast("Playback started");
+      telemetryInterval.current = window.setInterval(async () => {
+        try {
+          const tel = await getTelemetry();
+          setTelemetry(tel);
+        } catch (e) {
+          console.error("Telemetry error:", e);
+        }
+      }, 100);
+    } catch (e) {
+      showToast(`Playback failed: ${e}`);
+    }
+  };
+
+  const handleStopPlayback = async () => {
+    try {
+      await stopPlayback();
+      if (telemetryInterval.current) {
+        clearInterval(telemetryInterval.current);
+        telemetryInterval.current = null;
+      }
+      setIsPlaying(false);
+      setTelemetry(null);
+      showToast("Playback stopped");
+    } catch (e) {
+      showToast(`Stop failed: ${e}`);
+    }
+  };
+
+  const handlePlayPause = async () => {
+    try {
+      if (isPlaying) {
+        await stopPlayback();
+        if (telemetryInterval.current) {
+          clearInterval(telemetryInterval.current);
+          telemetryInterval.current = null;
+        }
+        setIsPlaying(false);
+        setTelemetry(null);
+      } else {
+        await startPlayback(project, selectedDevice);
+        setIsPlaying(true);
+        telemetryInterval.current = window.setInterval(async () => {
+          try {
+            setTelemetry(await getTelemetry());
+          } catch (e) {
+            console.error("Telemetry error:", e);
+          }
+        }, 100);
+      }
+    } catch (e) {
+      showToast(`Audio error: ${e}`);
+    }
+  };
+
+  const handleSourcePositionChange = async (
+    field: "azimuth" | "elevation" | "distance",
+    value: number,
+  ) => {
+    try {
+      // Update local state + 3D scene (same logic as handleSourceChange)
+      handleSourceChange(field, value);
+      // Send to audio engine backend
+      const rounded =
+        field === "distance" ? parseFloat(value.toFixed(2)) : parseFloat(value.toFixed(1));
+      await setSourcePosition({ ...project.virtualSource, [field]: rounded });
+    } catch (e) {
+      console.error("Failed to set source position:", e);
+    }
+  };
+
   // --- Handlers ---
   const handleAddSpeaker = () => {
     setPlacingSpeaker(true);
@@ -279,6 +383,14 @@ export default function App() {
 
   const handleFocus = () => {
     sceneRef.current?.focusSelectedObject();
+  };
+
+  const handleProjectNameChange = (name: string) => {
+    setProject((prev) => {
+      const updated = { ...prev, name };
+      if (sceneRef.current) sceneRef.current.project = updated;
+      return updated;
+    });
   };
 
   const handleRoomChange = (field: keyof typeof project.room, value: number) => {
@@ -426,10 +538,10 @@ export default function App() {
 
   const handlePresetSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
-    if (val === "stereo") applyPreset(createStereoPreset, "Stereo 2.0");
+    if (val === "headphones" || val === "stereo") applyPreset(createStereoPreset, val === "headphones" ? "Headphones" : "Stereo 2.0");
     else if (val === "5.1") applyPreset(create51Preset, "Surround 5.1");
     else if (val === "7.1.4") applyPreset(create714Preset, "Spatial Atmos 7.1.4");
-    e.target.value = ""; // Reset dropdown after selection
+    e.target.value = "";
   };
 
   const executePreset = (presetFn: (p: BelugaProject) => BelugaProject, name: string) => {
@@ -505,6 +617,25 @@ export default function App() {
     e.target.value = "";
   };
 
+  const handleImportGLB = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const buffer = ev.target?.result as ArrayBuffer;
+        if (sceneRef.current && buffer) {
+          sceneRef.current.loadGLB(buffer);
+          showToast(`Imported 3D Room: ${file.name}`);
+        }
+      } catch (_) {
+        showToast("Error loading GLB 3D model");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
+
   // Selection references
   const selectedSpeaker = project.speakers.find((s) => s.id === selectedId);
   const listener = project.listeners[0] || {
@@ -521,10 +652,21 @@ export default function App() {
   const selectedSpeakerAzimuth = selectedSpeakerIdx >= 0 ? sceneUpdate.speakerAzimuths[selectedSpeakerIdx] ?? 0 : 0;
   const selectedSpeakerDist = selectedSpeakerIdx >= 0 ? sceneUpdate.speakerDistances[selectedSpeakerIdx] ?? 0 : 0;
 
+  // Snap points configuration matching user's ruler scale drawing
+  const angleSnaps = [
+    { value: -180, label: "-180°" },
+    { value: -90, label: "-90°" },
+    { value: 0, label: "0°" },
+    { value: 90, label: "90°" },
+    { value: 180, label: "180°" },
+  ];
+
+  const screenW = typeof window !== "undefined" ? window.innerWidth : 1200;
+
   return (
     <div className="app-shell">
-      {/* ─── Left DAW Tool Rail ─── */}
-      <div className="tool-rail">
+      {/* ─── Left Floating Tool Rail (PC Style Sidebar) ─── */}
+      <div className="tool-rail glass-overlay">
         <div className="rail-brand" title="Beluga Spatial Audio Studio">
           <Icons.BelugaLogo />
         </div>
@@ -537,6 +679,30 @@ export default function App() {
           <Icons.Plus />
         </button>
 
+        <button
+          className={`rail-btn ${showRoomWindow ? "active" : ""}`}
+          onClick={() => setShowRoomWindow(!showRoomWindow)}
+          data-tooltip="Room Settings"
+        >
+          <Icons.Room />
+        </button>
+
+        <button
+          className={`rail-btn ${showGainsWindow ? "active" : ""}`}
+          onClick={() => setShowGainsWindow(!showGainsWindow)}
+          data-tooltip="Live Gains"
+        >
+          <Icons.Acoustics />
+        </button>
+
+        <button
+          className={`rail-btn ${showAudioWindow ? "active" : ""}`}
+          onClick={() => setShowAudioWindow(!showAudioWindow)}
+          data-tooltip="Audio Engine"
+        >
+          <Icons.Speaker />
+        </button>
+
         <div className="rail-divider" />
 
         <button
@@ -547,23 +713,36 @@ export default function App() {
           <Icons.Trash />
         </button>
 
-        <div className="rail-spacer" />
+        <div className="rail-divider" />
 
         <button className="rail-btn" onClick={handleExportJSON} data-tooltip="Save / Export Project">
           <Icons.Save />
         </button>
 
-        <label className="rail-btn" data-tooltip="Import Project JSON">
-          <Icons.Import />
-          <input type="file" accept=".json,.beluga.json" onChange={handleImportJSON} style={{ display: "none" }} />
-        </label>
+        {/* Import Flyout Menu: JSON project or GLB 3D Room */}
+        <div className="rail-flyout-wrap">
+          <button className="rail-btn" data-tooltip="Import JSON / GLB">
+            <Icons.Import />
+          </button>
+          <div className="rail-flyout-menu">
+            <label className="flyout-item">
+              <Icons.Save />
+              <span>Import Project (.json)</span>
+              <input type="file" accept=".json,.beluga.json" onChange={handleImportJSON} style={{ display: "none" }} />
+            </label>
+            <label className="flyout-item">
+              <Icons.Room />
+              <span>Import Room 3D (.glb)</span>
+              <input type="file" accept=".glb,.gltf" onChange={handleImportGLB} style={{ display: "none" }} />
+            </label>
+          </div>
+        </div>
       </div>
 
-      {/* ─── Main Content (3D Viewport + Overlays) ─── */}
+      {/* ─── Main Content (3D Viewport + Floating Draggable Windows) ─── */}
       <div className="main-content">
-        {/* 3D Viewport Container */}
         <div className="viewport-container" ref={containerRef}>
-          {/* Top Center Floating Navigation Bar with Single Presets Dropdown */}
+          {/* Top Center Floating Navigation Bar (Clean Minimal, VBAP Tag Removed) */}
           <div className="top-control-bar glass-overlay">
             {/* Camera Perspectives */}
             <div className="control-segment">
@@ -631,6 +810,7 @@ export default function App() {
                 aria-label="Select Speaker Layout Preset"
               >
                 <option value="" disabled>✨ Layout Presets</option>
+                <option value="headphones">♪ Headphones (Stereo)</option>
                 <option value="stereo">Stereo 2.0 (2 Channels)</option>
                 <option value="5.1">Surround 5.1 (6 Channels)</option>
                 <option value="7.1.4">Spatial Atmos 7.1.4 (12 Channels)</option>
@@ -639,564 +819,409 @@ export default function App() {
                 <Icons.ChevronDown />
               </span>
             </div>
-
-            <div className="control-divider" />
-
-            {/* Live Audio Engine Status */}
-            <div className="status-pill">
-              <span className="live-dot" />
-              <span>VBAP 3D</span>
-            </div>
           </div>
 
-          {/* Top-Left Floating VBAP Acoustic Meter Panel (Selecting speaker selects in 3D) */}
-          <div className="gain-meter-panel glass-overlay">
-            <div className="panel-header">
-              <div className="panel-title">
-                <Icons.Acoustics /> Live Gains ({project.speakers.length})
-              </div>
-            </div>
-
-            <div className="gain-list">
-              {project.speakers.length === 0 ? (
-                <div style={{ color: "var(--text-muted)", fontSize: 11, padding: "8px 4px" }}>
-                  No speakers in room. Click '+' to add or select a layout preset.
+          {/* ─── Movable Window 1: Live Gains Meter Panel (Top Left) ─── */}
+          {showGainsWindow && (
+            <DraggableWindow
+              id="live-gains-window"
+              title={`Live Gains (${project.speakers.length})`}
+              icon={
+                <div className="window-icon badge-gain">
+                  <Icons.Acoustics />
                 </div>
-              ) : (
-                project.speakers.map((s, idx) => {
-                  const gain = sceneUpdate.speakerGains[idx] ?? 0;
-                  const isSel = s.id === selectedId;
-                  const az = sceneUpdate.speakerAzimuths[idx] ?? 0;
-                  const dist = sceneUpdate.speakerDistances[idx] ?? 0;
-                  const activeGain = gain > 0.01;
+              }
+              defaultPosition={{ x: 74, y: 70 }}
+              width={260}
+              onClose={() => setShowGainsWindow(false)}
+            >
+              <div className="gain-list">
+                {project.speakers.length === 0 ? (
+                  <div style={{ color: "var(--text-muted)", fontSize: 11, padding: "8px 4px" }}>
+                    No speakers in room. Click '+' to add or select a layout preset.
+                  </div>
+                ) : (
+                  project.speakers.map((s, idx) => {
+                    const gain = sceneUpdate.speakerGains[idx] ?? 0;
+                    const isSel = s.id === selectedId;
+                    const az = sceneUpdate.speakerAzimuths[idx] ?? 0;
+                    const dist = sceneUpdate.speakerDistances[idx] ?? 0;
+                    const activeGain = gain > 0.01;
 
-                  return (
-                    <div
-                      key={s.id}
-                      className={`gain-item ${isSel ? "selected" : ""} ${activeGain ? "active-gain" : ""}`}
-                      onClick={() => handleSelectObject(s.id)}
-                      title="Click to select and focus speaker in 3D"
-                    >
-                      <div className="gain-item-top">
-                        <span className="gain-item-name">
-                          <span
+                    return (
+                      <div
+                        key={s.id}
+                        className={`gain-item ${isSel ? "selected" : ""} ${activeGain ? "active-gain" : ""}`}
+                        onClick={() => handleSelectObject(s.id)}
+                        title="Click to select speaker in 3D"
+                      >
+                        <div className="gain-item-top">
+                          <span className="gain-item-name">
+                            <span
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: "50%",
+                                background: activeGain ? "var(--accent-blue)" : "#cbd5e1",
+                              }}
+                            />
+                            {s.name}
+                          </span>
+                          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                            <span className="gain-badge">{s.category}</span>
+                            <span className="gain-item-val">{(gain * 100).toFixed(0)}%</span>
+                          </div>
+                        </div>
+
+                        <div className="gain-meter-track">
+                          <div
+                            className="gain-meter-bar"
                             style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: "50%",
-                              background: activeGain ? "var(--accent-blue)" : "#cbd5e1",
+                              width: `${Math.min(100, Math.max(0, gain * 100))}%`,
+                              background: "var(--accent-blue)",
                             }}
                           />
-                          {s.name}
-                        </span>
-                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                          <span className="gain-badge">{s.category}</span>
-                          <span className="gain-item-val">{(gain * 100).toFixed(0)}%</span>
+                        </div>
+
+                        <div className="gain-item-coords">
+                          [{s.position.x.toFixed(2)}, {s.position.y.toFixed(2)}, {s.position.z.toFixed(2)}] · Az: {az.toFixed(1)}° · {dist.toFixed(2)}m
                         </div>
                       </div>
+                    );
+                  })
+                )}
+              </div>
+            </DraggableWindow>
+          )}
 
-                      <div className="gain-meter-track">
-                        <div
-                          className="gain-meter-bar"
-                          style={{
-                            width: `${Math.min(100, Math.max(0, gain * 100))}%`,
-                            background:
-                              gain > 0.7
-                                ? "linear-gradient(90deg, #06b6d4, #2563eb)"
-                                : gain > 0.05
-                                ? "linear-gradient(90deg, #38bdf8, #06b6d4)"
-                                : "#cbd5e1",
-                          }}
-                        />
-                      </div>
-
-                      <div className="gain-item-coords">
-                        [{s.position.x.toFixed(2)}, {s.position.y.toFixed(2)}, {s.position.z.toFixed(2)}] · Az: {az.toFixed(1)}° · {dist.toFixed(2)}m
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Top-Right Floating Contextual Inspector */}
-          <div className="inspector-panel glass-overlay">
-            {/* 1. SPEAKER SELECTED */}
-            {selectedSpeaker ? (
-              <>
-                <div className="inspector-top-row">
-                  <div className="inspector-title-group">
-                    <div className="inspector-icon-badge badge-speaker">
-                      <Icons.Speaker />
-                    </div>
-                    <div>
-                      <h3>{selectedSpeaker.name}</h3>
-                      <span className="inspector-subtitle">Loudspeaker Properties</span>
-                    </div>
-                  </div>
-                  <button className="inspector-close-btn" onClick={() => handleSelectObject(null)} title="Deselect">
-                    <Icons.Close />
-                  </button>
-                </div>
-
-                <div className="field-section">
-                  <div className="form-group">
-                    <label className="form-label">Name</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={selectedSpeaker.name}
-                      onChange={(e) => handleSpeakerNameChange(selectedSpeaker.id, e.target.value)}
-                    />
-                  </div>
-
-                  {/* Speaker Type / Category in Dropdown */}
-                  <div className="form-group">
-                    <label className="form-label">Speaker Type</label>
-                    <select
-                      className="form-select"
-                      value={selectedSpeaker.category}
-                      onChange={(e) => handleSpeakerCategoryChange(selectedSpeaker.id, e.target.value)}
-                    >
-                      {SPEAKER_CATEGORIES.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="field-section">
-                  <span className="section-label">Position Matrix (Meters)</span>
-                  <div className="coord-grid-3">
-                    <div className="coord-cell">
-                      <span className="coord-cell-label">X (Left/Right)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="coord-cell-input"
-                        value={selectedSpeaker.position.x.toFixed(2)}
-                        onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "x", parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                    <div className="coord-cell">
-                      <span className="coord-cell-label">Y (Front/Back)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="coord-cell-input"
-                        value={selectedSpeaker.position.y.toFixed(2)}
-                        onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "y", parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                    <div className="coord-cell">
-                      <span className="coord-cell-label">Z (Height)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="coord-cell-input"
-                        value={selectedSpeaker.position.z.toFixed(2)}
-                        onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "z", parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="field-section">
-                  <div className="slider-group">
-                    <div className="slider-header">
-                      <span className="section-label">Facing Yaw Orientation</span>
-                      <span className="slider-readout">{selectedSpeaker.orientation.yaw.toFixed(1)}°</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-180"
-                      max="180"
-                      step="1"
-                      className="studio-slider"
-                      value={selectedSpeaker.orientation.yaw}
-                      onChange={(e) => handleSpeakerOrientChange(selectedSpeaker.id, "yaw", parseFloat(e.target.value))}
-                    />
-                  </div>
-                </div>
-
-                <div className="field-section" style={{ background: "rgba(248,250,252,0.8)", padding: 10, borderRadius: 8, border: "1px solid var(--border-subtle)" }}>
-                  <span className="section-label">Listener-Relative Acoustic Stats</span>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 11 }}>
-                    <span>Gain: <strong>{(selectedSpeakerGain * 100).toFixed(1)}%</strong></span>
-                    <span>Az: <strong>{selectedSpeakerAzimuth.toFixed(1)}°</strong></span>
-                    <span>Dist: <strong>{selectedSpeakerDist.toFixed(2)}m</strong></span>
-                  </div>
-                </div>
-
-                <div className="btn-grid-2" style={{ marginTop: 10 }}>
-                  <button className="action-btn" onClick={handleFocus}>
-                    <Icons.Focus /> Focus (F)
-                  </button>
-                  <button className="action-btn danger" onClick={() => handleRemoveSpeaker(selectedSpeaker.id)}>
-                    <Icons.Trash /> Delete
-                  </button>
-                </div>
-              </>
-            ) : isListenerSelected ? (
-              /* 2. LISTENER SELECTED */
-              <>
-                <div className="inspector-top-row">
-                  <div className="inspector-title-group">
-                    <div className="inspector-icon-badge badge-listener">
-                      <Icons.Listener />
-                    </div>
-                    <div>
-                      <h3>Listener Sweet Spot</h3>
-                      <span className="inspector-subtitle">Reference Listening Position</span>
-                    </div>
-                  </div>
-                  <button className="inspector-close-btn" onClick={() => handleSelectObject(null)} title="Deselect">
-                    <Icons.Close />
-                  </button>
-                </div>
-
-                <div className="field-section">
-                  <span className="section-label">Floor Position (Meters)</span>
-                  <div className="coord-grid-3">
-                    <div className="coord-cell">
-                      <span className="coord-cell-label">X (Left/Right)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="coord-cell-input"
-                        value={listener.position.x.toFixed(2)}
-                        onChange={(e) => handleListenerPosChange("x", parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                    <div className="coord-cell">
-                      <span className="coord-cell-label">Y (Front/Back)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="coord-cell-input"
-                        value={listener.position.y.toFixed(2)}
-                        onChange={(e) => handleListenerPosChange("y", parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                    <div className="coord-cell">
-                      <span className="coord-cell-label">Ear Height (Z)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className="coord-cell-input"
-                        value={listener.earHeight.toFixed(2)}
-                        onChange={(e) => handleListenerEarHeightChange(parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="field-section">
-                  <div className="slider-group">
-                    <div className="slider-header">
-                      <span className="section-label">Head Facing Direction</span>
-                      <span className="slider-readout">{listener.orientation.yaw.toFixed(1)}°</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-180"
-                      max="180"
-                      step="1"
-                      className="studio-slider"
-                      value={listener.orientation.yaw}
-                      onChange={(e) => handleListenerOrientChange(parseFloat(e.target.value))}
-                    />
-                  </div>
-
-                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                    <button className="cat-pill" onClick={() => handleListenerOrientChange(0)}>Front (0°)</button>
-                    <button className="cat-pill" onClick={() => handleListenerOrientChange(90)}>Right (90°)</button>
-                    <button className="cat-pill" onClick={() => handleListenerOrientChange(180)}>Back (180°)</button>
-                    <button className="cat-pill" onClick={() => handleListenerOrientChange(-90)}>Left (-90°)</button>
-                  </div>
-                </div>
-
-                <div className="btn-grid-2" style={{ marginTop: 10 }}>
-                  <button className="action-btn" onClick={() => handleSetView("listener")}>
-                    <Icons.ListenerView /> POV Camera
-                  </button>
-                  <button className="action-btn" onClick={handleFocus}>
-                    <Icons.Focus /> Focus (F)
-                  </button>
-                </div>
-              </>
-            ) : isSourceSelected ? (
-              /* 3. VIRTUAL SOURCE SELECTED */
-              <>
-                <div className="inspector-top-row">
-                  <div className="inspector-title-group">
-                    <div className="inspector-icon-badge badge-source">
-                      <Icons.Source />
-                    </div>
-                    <div>
-                      <h3>Virtual Sound Source</h3>
-                      <span className="inspector-subtitle">Spatial Audio Object (VBAP)</span>
-                    </div>
-                  </div>
-                  <button className="inspector-close-btn" onClick={() => handleSelectObject(null)} title="Deselect">
-                    <Icons.Close />
-                  </button>
-                </div>
-
-                <div className="field-section">
-                  <div className="slider-group">
-                    <div className="slider-header">
-                      <span className="section-label">Azimuth Angle</span>
-                      <span className="slider-readout">{project.virtualSource.azimuth.toFixed(1)}°</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-180"
-                      max="180"
-                      step="1"
-                      className="studio-slider"
-                      value={project.virtualSource.azimuth}
-                      onChange={(e) => handleSourceChange("azimuth", parseFloat(e.target.value))}
-                    />
-                    <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
-                      <button className="cat-pill" onClick={() => handleSourceChange("azimuth", -30)}>L (-30°)</button>
-                      <button className="cat-pill" onClick={() => handleSourceChange("azimuth", 0)}>Center (0°)</button>
-                      <button className="cat-pill" onClick={() => handleSourceChange("azimuth", 30)}>R (+30°)</button>
-                      <button className="cat-pill" onClick={() => handleSourceChange("azimuth", -110)}>Ls (-110°)</button>
-                      <button className="cat-pill" onClick={() => handleSourceChange("azimuth", 110)}>Rs (+110°)</button>
-                    </div>
-                  </div>
-
-                  <div className="slider-group" style={{ marginTop: 8 }}>
-                    <div className="slider-header">
-                      <span className="section-label">Elevation Angle</span>
-                      <span className="slider-readout">{(project.virtualSource.elevation || 0).toFixed(1)}°</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-90"
-                      max="90"
-                      step="1"
-                      className="studio-slider"
-                      value={project.virtualSource.elevation || 0}
-                      onChange={(e) => handleSourceChange("elevation", parseFloat(e.target.value))}
-                    />
-                  </div>
-
-                  <div className="slider-group" style={{ marginTop: 8 }}>
-                    <div className="slider-header">
-                      <span className="section-label">Distance from Listener</span>
-                      <span className="slider-readout">{project.virtualSource.distance.toFixed(2)}m</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="8"
-                      step="0.05"
-                      className="studio-slider"
-                      value={project.virtualSource.distance}
-                      onChange={(e) => handleSourceChange("distance", parseFloat(e.target.value))}
-                    />
-                  </div>
-                </div>
-
-                <div className="btn-grid-2" style={{ marginTop: 10 }}>
-                  <button className="action-btn" onClick={() => { handleSourceChange("azimuth", 0); handleSourceChange("elevation", 0); }}>
-                    Reset Center
-                  </button>
-                  <button className="action-btn" onClick={handleFocus}>
-                    <Icons.Focus /> Focus (F)
-                  </button>
-                </div>
-              </>
-            ) : (
-              /* 4. ROOM / SCENE OVERVIEW (When nothing is selected) */
-              <>
-                <div className="inspector-top-row">
-                  <div className="inspector-title-group">
-                    <div className="inspector-icon-badge badge-room">
-                      <Icons.Room />
-                    </div>
-                    <div>
-                      <h3>{project.name}</h3>
-                      <span className="inspector-subtitle">Studio Room Geometry</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="field-section">
-                  <span className="section-label">Room Dimensions (Meters)</span>
-                  <div className="coord-grid-3">
-                    <div className="coord-cell">
-                      <span className="coord-cell-label">Length (Y)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="1"
-                        className="coord-cell-input"
-                        value={project.room.length.toFixed(2)}
-                        onChange={(e) => handleRoomChange("length", parseFloat(e.target.value) || 1)}
-                      />
-                    </div>
-                    <div className="coord-cell">
-                      <span className="coord-cell-label">Width (X)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="1"
-                        className="coord-cell-input"
-                        value={project.room.width.toFixed(2)}
-                        onChange={(e) => handleRoomChange("width", parseFloat(e.target.value) || 1)}
-                      />
-                    </div>
-                    <div className="coord-cell">
-                      <span className="coord-cell-label">Height (Z)</span>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="1"
-                        className="coord-cell-input"
-                        value={project.room.height.toFixed(2)}
-                        onChange={(e) => handleRoomChange("height", parseFloat(e.target.value) || 1)}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="field-section" style={{ background: "rgba(248,250,252,0.8)", padding: 10, borderRadius: 8, border: "1px solid var(--border-subtle)" }}>
-                  <span className="section-label">Calculated Room Acoustics</span>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 11 }}>
-                    <span>Floor Area: <strong>{(project.room.length * project.room.width).toFixed(2)} m²</strong></span>
-                    <span>Volume: <strong>{(project.room.length * project.room.width * project.room.height).toFixed(2)} m³</strong></span>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* ─── Floating Transparent & Centered Bottom Window (Minimalistic) ─── */}
-          <div className="floating-bottom-dock glass-overlay">
-            {/* Dock Minimalist Navigation Bar */}
-            <div className="dock-nav-bar">
-              <div className="dock-tabs">
-                <button
-                  className={`dock-tab ${bottomTab === "room" ? "active" : ""}`}
-                  onClick={() => { setBottomTab("room"); setIsDockCollapsed(false); }}
-                >
+          {/* ─── Movable Window 2: Room Geometry & Acoustics (Top Right) ─── */}
+          {showRoomWindow && (
+            <DraggableWindow
+              id="room-window"
+              title={project.name || "Room"}
+              icon={
+                <div className="window-icon badge-room">
                   <Icons.Room />
-                  Room Geometry
-                </button>
+                </div>
+              }
+              defaultPosition={{ x: Math.max(20, screenW - 320), y: 70 }}
+              width={290}
+              onClose={() => setShowRoomWindow(false)}
+            >
+              <div className="field-section">
+                <div className="form-group">
+                  <label className="form-label">Project Name</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={project.name}
+                    onChange={(e) => handleProjectNameChange(e.target.value)}
+                    placeholder="e.g. Studio Mix Room"
+                  />
+                </div>
+              </div>
 
-                <button
-                  className={`dock-tab ${bottomTab === "listener" ? "active" : ""}`}
-                  onClick={() => { setBottomTab("listener"); setIsDockCollapsed(false); handleSelectObject("listener"); }}
-                >
+              <div className="field-section">
+                <span className="section-label">Dimensions (Meters)</span>
+                <div className="coord-grid-3">
+                  <ScrubInput
+                    label="L (Y)"
+                    value={project.room.length}
+                    min={1}
+                    max={30}
+                    step={0.05}
+                    onChange={(val) => handleRoomChange("length", val)}
+                  />
+                  <ScrubInput
+                    label="W (X)"
+                    value={project.room.width}
+                    min={1}
+                    max={30}
+                    step={0.05}
+                    onChange={(val) => handleRoomChange("width", val)}
+                  />
+                  <ScrubInput
+                    label="H (Z)"
+                    value={project.room.height}
+                    min={1}
+                    max={15}
+                    step={0.05}
+                    onChange={(val) => handleRoomChange("height", val)}
+                  />
+                </div>
+              </div>
+
+              <div className="field-section" style={{ background: "rgba(248,250,252,0.8)", padding: 8, borderRadius: 8, border: "1px solid var(--border-subtle)" }}>
+                <span className="section-label">Acoustic Calculations</span>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3, fontSize: 11 }}>
+                  <span>Floor: <strong>{(project.room.length * project.room.width).toFixed(2)} m²</strong></span>
+                  <span>Volume: <strong>{(project.room.length * project.room.width * project.room.height).toFixed(2)} m³</strong></span>
+                </div>
+              </div>
+            </DraggableWindow>
+          )}
+
+          {/* ─── Movable Window 3: Selected Object Inspector (Speaker, Listener, Audio Source) ─── */}
+          {selectedSpeaker && (
+            <DraggableWindow
+              id={`speaker-${selectedSpeaker.id}`}
+              title={selectedSpeaker.name}
+              icon={
+                <div className="window-icon badge-speaker">
+                  <Icons.Speaker />
+                </div>
+              }
+              defaultPosition={{ x: Math.max(20, screenW - 320), y: 280 }}
+              width={290}
+              onClose={() => handleSelectObject(null)}
+            >
+              <div className="field-section">
+                <div className="form-group">
+                  <label className="form-label">Name</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={selectedSpeaker.name}
+                    onChange={(e) => handleSpeakerNameChange(selectedSpeaker.id, e.target.value)}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Speaker Type</label>
+                  <select
+                    className="form-select"
+                    value={selectedSpeaker.category}
+                    onChange={(e) => handleSpeakerCategoryChange(selectedSpeaker.id, e.target.value)}
+                  >
+                    {SPEAKER_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="field-section">
+                <span className="section-label">Position Matrix (Meters)</span>
+                <div className="coord-grid-3">
+                  <ScrubInput
+                    label="X"
+                    value={selectedSpeaker.position.x}
+                    step={0.01}
+                    onChange={(val) => handleSpeakerPosChange(selectedSpeaker.id, "x", val)}
+                  />
+                  <ScrubInput
+                    label="Y"
+                    value={selectedSpeaker.position.y}
+                    step={0.01}
+                    onChange={(val) => handleSpeakerPosChange(selectedSpeaker.id, "y", val)}
+                  />
+                  <ScrubInput
+                    label="Z"
+                    value={selectedSpeaker.position.z}
+                    step={0.01}
+                    min={0}
+                    onChange={(val) => handleSpeakerPosChange(selectedSpeaker.id, "z", val)}
+                  />
+                </div>
+              </div>
+
+              <div className="field-section">
+                <div className="slider-header">
+                  <span className="section-label">Facing Yaw Orientation</span>
+                  <span className="slider-readout">{selectedSpeaker.orientation.yaw.toFixed(1)}°</span>
+                </div>
+                <SnapSlider
+                  value={selectedSpeaker.orientation.yaw}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  snapPoints={angleSnaps}
+                  onChange={(val) => handleSpeakerOrientChange(selectedSpeaker.id, "yaw", val)}
+                />
+              </div>
+
+              <div className="field-section" style={{ background: "rgba(248,250,252,0.8)", padding: 8, borderRadius: 8, border: "1px solid var(--border-subtle)" }}>
+                <span className="section-label">Listener-Relative Acoustic Stats</span>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3, fontSize: 11 }}>
+                  <span>Gain: <strong>{(selectedSpeakerGain * 100).toFixed(1)}%</strong></span>
+                  <span>Az: <strong>{selectedSpeakerAzimuth.toFixed(1)}°</strong></span>
+                  <span>Dist: <strong>{selectedSpeakerDist.toFixed(2)}m</strong></span>
+                </div>
+              </div>
+
+              <div className="btn-grid-2" style={{ marginTop: 4 }}>
+                <button className="action-btn" onClick={handleFocus}>
+                  <Icons.Focus /> Focus (F)
+                </button>
+                <button className="action-btn danger" onClick={() => handleRemoveSpeaker(selectedSpeaker.id)}>
+                  <Icons.Trash /> Delete
+                </button>
+              </div>
+            </DraggableWindow>
+          )}
+
+          {/* Listener Draggable Window */}
+          {isListenerSelected && (
+            <DraggableWindow
+              id="listener-window"
+              title="Listener"
+              icon={
+                <div className="window-icon badge-listener">
                   <Icons.Listener />
-                  Listener Sweet Spot
-                </button>
+                </div>
+              }
+              defaultPosition={{ x: Math.max(20, screenW - 320), y: 280 }}
+              width={290}
+              onClose={() => handleSelectObject(null)}
+            >
+              <div className="field-section">
+                <span className="section-label">Position & Height (Meters)</span>
+                <div className="coord-grid-3">
+                  <ScrubInput
+                    label="X"
+                    value={listener.position.x}
+                    step={0.01}
+                    onChange={(val) => handleListenerPosChange("x", val)}
+                  />
+                  <ScrubInput
+                    label="Y"
+                    value={listener.position.y}
+                    step={0.01}
+                    onChange={(val) => handleListenerPosChange("y", val)}
+                  />
+                  <ScrubInput
+                    label="Ear Z"
+                    value={listener.earHeight}
+                    min={0.1}
+                    step={0.01}
+                    onChange={handleListenerEarHeightChange}
+                  />
+                </div>
+              </div>
 
-                <button
-                  className={`dock-tab ${bottomTab === "source" ? "active" : ""}`}
-                  onClick={() => { setBottomTab("source"); setIsDockCollapsed(false); handleSelectObject("source"); }}
-                >
+              <div className="field-section">
+                <div className="slider-header">
+                  <span className="section-label">Head Facing Direction</span>
+                  <span className="slider-readout">{listener.orientation.yaw.toFixed(1)}°</span>
+                </div>
+                <SnapSlider
+                  value={listener.orientation.yaw}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  snapPoints={angleSnaps}
+                  onChange={handleListenerOrientChange}
+                />
+              </div>
+
+              <div className="btn-grid-2" style={{ marginTop: 4 }}>
+                <button className="action-btn" onClick={() => handleSetView("listener")}>
+                  <Icons.ListenerView /> POV Camera
+                </button>
+                <button className="action-btn" onClick={handleFocus}>
+                  <Icons.Focus /> Focus (F)
+                </button>
+              </div>
+            </DraggableWindow>
+          )}
+
+          {/* Audio Source Draggable Window */}
+          {isSourceSelected && (
+            <DraggableWindow
+              id="source-window"
+              title="Audio Source"
+              icon={
+                <div className="window-icon badge-source">
                   <Icons.Source />
-                  Audio Source
+                </div>
+              }
+              defaultPosition={{ x: Math.max(20, screenW - 320), y: 280 }}
+              width={290}
+              onClose={() => handleSelectObject(null)}
+            >
+              <div className="field-section">
+                <div className="slider-header">
+                  <span className="section-label">Azimuth Angle</span>
+                  <span className="slider-readout">{project.virtualSource.azimuth.toFixed(1)}°</span>
+                </div>
+                <SnapSlider
+                  value={project.virtualSource.azimuth}
+                  min={-180}
+                  max={180}
+                  step={1}
+                  snapPoints={angleSnaps}
+                  onChange={(val) => handleSourceChange("azimuth", val)}
+                />
+
+                <div className="slider-group" style={{ marginTop: 6 }}>
+                  <div className="slider-header">
+                    <span className="section-label">Elevation Angle</span>
+                    <span className="slider-readout">{(project.virtualSource.elevation || 0).toFixed(1)}°</span>
+                  </div>
+                  <SnapSlider
+                    value={project.virtualSource.elevation || 0}
+                    min={-90}
+                    max={90}
+                    step={1}
+                    snapPoints={[
+                      { value: -90, label: "-90°" },
+                      { value: -45, label: "-45°" },
+                      { value: 0, label: "0°" },
+                      { value: 45, label: "45°" },
+                      { value: 90, label: "90°" },
+                    ]}
+                    onChange={(val) => handleSourceChange("elevation", val)}
+                  />
+                </div>
+
+                <div className="slider-group" style={{ marginTop: 6 }}>
+                  <div className="slider-header">
+                    <span className="section-label">Distance from Listener</span>
+                    <span className="slider-readout">{project.virtualSource.distance.toFixed(2)}m</span>
+                  </div>
+                  <ScrubInput
+                    label="Distance"
+                    value={project.virtualSource.distance}
+                    min={0.3}
+                    max={12}
+                    step={0.05}
+                    onChange={(val) => handleSourceChange("distance", val)}
+                  />
+                </div>
+              </div>
+
+              <div className="btn-grid-2" style={{ marginTop: 4 }}>
+                <button className="action-btn" onClick={() => { handleSourceChange("azimuth", 0); handleSourceChange("elevation", 0); }}>
+                  Reset Center
+                </button>
+                <button className="action-btn" onClick={handleFocus}>
+                  <Icons.Focus /> Focus (F)
                 </button>
               </div>
-
-              <div className="dock-nav-spacer" />
-
-              <button
-                className="dock-toggle-btn"
-                onClick={() => setIsDockCollapsed(!isDockCollapsed)}
-                title={isDockCollapsed ? "Expand Window" : "Collapse Window"}
-              >
-                {isDockCollapsed ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
-              </button>
-            </div>
-
-            {/* Minimalist Dock Body */}
-            {!isDockCollapsed && (
-              <div className="dock-body">
-                {/* Tab 1: ROOM GEOMETRY */}
-                {bottomTab === "room" && (
-                  <>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Length (Y)</span>
-                      <span className="dock-stat-value">{project.room.length.toFixed(2)} m</span>
-                    </div>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Width (X)</span>
-                      <span className="dock-stat-value">{project.room.width.toFixed(2)} m</span>
-                    </div>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Height (Z)</span>
-                      <span className="dock-stat-value">{project.room.height.toFixed(2)} m</span>
-                    </div>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Floor Area</span>
-                      <span className="dock-stat-value">{(project.room.length * project.room.width).toFixed(2)} m²</span>
-                    </div>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Volume</span>
-                      <span className="dock-stat-value">
-                        {(project.room.length * project.room.width * project.room.height).toFixed(2)} m³
-                      </span>
-                    </div>
-                  </>
-                )}
-
-                {/* Tab 2: LISTENER */}
-                {bottomTab === "listener" && (
-                  <>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Position [X, Y]</span>
-                      <span className="dock-stat-value">
-                        [{listener.position.x.toFixed(2)}, {listener.position.y.toFixed(2)}] m
-                      </span>
-                    </div>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Ear Height</span>
-                      <span className="dock-stat-value">{listener.earHeight.toFixed(2)} m</span>
-                    </div>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Facing Yaw</span>
-                      <span className="dock-stat-value">{listener.orientation.yaw.toFixed(1)}°</span>
-                    </div>
-                    <button className="action-btn" onClick={() => handleSetView("listener")}>
-                      <Icons.ListenerView /> POV Camera
-                    </button>
-                  </>
-                )}
-
-                {/* Tab 3: VIRTUAL SOURCE */}
-                {bottomTab === "source" && (
-                  <>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Azimuth</span>
-                      <span className="dock-stat-value">{project.virtualSource.azimuth.toFixed(1)}°</span>
-                    </div>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Elevation</span>
-                      <span className="dock-stat-value">{(project.virtualSource.elevation || 0).toFixed(1)}°</span>
-                    </div>
-                    <div className="dock-stat-box">
-                      <span className="dock-stat-label">Distance</span>
-                      <span className="dock-stat-value">{project.virtualSource.distance.toFixed(2)} m</span>
-                    </div>
-                    <button className="action-btn" onClick={() => { handleSourceChange("azimuth", 0); handleSourceChange("elevation", 0); }}>
-                      Reset Center
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+            </DraggableWindow>
+          )}
         </div>
       </div>
+
+      {/* ─── Audio Controls Window ─── */}
+      {showAudioWindow && (
+        <AudioControls
+          audioDevices={audioDevices}
+          selectedDevice={selectedDevice}
+          onSelectDevice={setSelectedDevice}
+          isPlaying={isPlaying}
+          telemetry={telemetry}
+          onPlayPause={handlePlayPause}
+          onStart={handleStartPlayback}
+          onStop={handleStopPlayback}
+          onSourcePosChange={handleSourcePositionChange}
+          onApplyPreset={applyPreset}
+          project={project}
+          onClose={() => setShowAudioWindow(false)}
+        />
+      )}
 
       {/* ─── Notification Toast ─── */}
       {toastMessage && (

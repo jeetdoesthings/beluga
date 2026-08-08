@@ -184,7 +184,7 @@ export class BelugaScene {
     this.transformControls.setMode("translate");
     this.transformControls.setSize(0.55);
     this.transformControls.addEventListener("dragging-changed", (e: any) => {
-      this.orbitControls.enabled = !e.value && this.currentView !== "listener";
+      this.orbitControls.enabled = !e.value;
     });
     this.transformControls.addEventListener("objectChange", () => {
       this.handleTransformChange();
@@ -500,6 +500,19 @@ export class BelugaScene {
     );
     group.add(arrow);
 
+    // Generous Invisible Click Hit-Box
+    const hitBox = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.65, 0.5),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    hitBox.name = "hitBox";
+    group.add(hitBox);
+
+    // Ensure all descendant meshes carry the speaker ID for instant raycast hit detection
+    group.traverse((child) => {
+      child.userData = { type: "speaker", id: speaker.id, name: speaker.name };
+    });
+
     return group;
   }
 
@@ -592,7 +605,18 @@ export class BelugaScene {
     );
     group.add(arrow);
 
-    group.userData = { type: "listener", id: "listener" };
+    // Generous Invisible Click Hit-Box for listener
+    const hitBox = new THREE.Mesh(
+      new THREE.SphereGeometry(0.42, 16, 16),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    hitBox.name = "hitBox";
+    group.add(hitBox);
+
+    group.traverse((child) => {
+      child.userData = { type: "listener", id: "listener" };
+    });
+
     this.listenerGroup.add(group);
     this.listenerGroupObj = group;
   }
@@ -645,7 +669,6 @@ export class BelugaScene {
     }
 
     const group = new THREE.Group();
-    group.userData = { type: "source", id: "source" };
 
     const geo = new THREE.SphereGeometry(0.15, 24, 20);
     const mat = new THREE.MeshPhongMaterial({
@@ -669,6 +692,18 @@ export class BelugaScene {
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = Math.PI / 2;
     group.add(ring);
+
+    // Generous Invisible Click Hit-Box for virtual source
+    const hitBox = new THREE.Mesh(
+      new THREE.SphereGeometry(0.38, 16, 16),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    hitBox.name = "hitBox";
+    group.add(hitBox);
+
+    group.traverse((child) => {
+      child.userData = { type: "source", id: "source" };
+    });
     this.sourcePulseRing = ring;
 
     const listener = this.project.listeners[0];
@@ -888,10 +923,6 @@ export class BelugaScene {
     this.updateGainVisualization();
   }
 
-  isDraggingObject = false;
-  draggedMesh: THREE.Object3D | null = null;
-  dragPlane = new THREE.Plane();
-  dragOffset = new THREE.Vector3();
   pointerDownScreenPos = { x: 0, y: 0 };
   isPointerDownOnEmpty = false;
 
@@ -900,25 +931,6 @@ export class BelugaScene {
 
     this.updateMouseFromEvent(event);
     this.raycaster.setFromCamera(this.mouse, this.camera);
-
-    if (this.isDraggingObject && this.draggedMesh) {
-      const intersection = new THREE.Vector3();
-      if (this.raycaster.ray.intersectPlane(this.dragPlane, intersection)) {
-        const newPos = intersection.add(this.dragOffset);
-
-        const rHeight = this.project.room.height || 2.8;
-        const rWidth = this.project.room.width || 5.0;
-        const rLength = this.project.room.length || 6.0;
-
-        newPos.y = Math.max(0, Math.min(rHeight, newPos.y));
-        newPos.x = Math.max(-rWidth / 2, Math.min(rWidth / 2, newPos.x));
-        newPos.z = Math.max(-rLength / 2, Math.min(rLength / 2, newPos.z));
-
-        this.draggedMesh.position.copy(newPos);
-        this.handleTransformChange();
-      }
-      return;
-    }
 
     if (this.placementMode === "speaker" && this.ghostSpeakerMesh) {
       const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -969,7 +981,7 @@ export class BelugaScene {
     this.updateMouseFromEvent(event);
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
-    // 1. Check if user clicked directly on an interactive scene object (speaker, listener, source)
+    // 1. Raycast against all interactive scene objects (speakers, listener, source)
     const checkObjects: THREE.Object3D[] = [
       ...this.speakerMeshes,
       ...(this.listenerGroupObj ? [this.listenerGroupObj] : []),
@@ -979,62 +991,34 @@ export class BelugaScene {
 
     let hitId: string | null = null;
     if (hits.length > 0) {
-      let parent: THREE.Object3D | null = hits[0].object;
-      while (parent && !parent.userData?.id) parent = parent.parent;
-      if (parent?.userData?.id) {
-        hitId = parent.userData.id;
-      }
-    }
-
-    // 2. Check if user clicked on a 3D Gizmo Arrow handle while an object is selected
-    if (this.selectedObjectId && this.gizmoHelper) {
-      try {
-        const gizmoHits = this.raycaster.intersectObject(this.gizmoHelper, true);
-        if (gizmoHits.length > 0) {
-          // If user clicked the gizmo and didn't directly click a different object in front
-          if (!hitId || (hits.length > 0 && gizmoHits[0].distance <= hits[0].distance)) {
-            return;
-          }
+      let cur: THREE.Object3D | null = hits[0].object;
+      while (cur) {
+        if (cur.userData?.id) {
+          hitId = cur.userData.id;
+          break;
         }
-      } catch (_) { /* fallback */ }
+        cur = cur.parent;
+      }
     }
 
     if (hitId) {
       this.selectObject(hitId);
-      const targetObj = this.findMeshById(hitId);
-      if (targetObj) {
-        this.isDraggingObject = true;
-        this.draggedMesh = targetObj;
-
-        const camDir = new THREE.Vector3();
-        this.camera.getWorldDirection(camDir);
-
-        const planeNormal = Math.abs(camDir.y) > 0.75
-          ? new THREE.Vector3(0, 1, 0)
-          : new THREE.Vector3(-camDir.x, 0, -camDir.z).normalize();
-
-        this.dragPlane.setFromNormalAndCoplanarPoint(planeNormal, targetObj.position);
-        const intersection = new THREE.Vector3();
-        if (this.raycaster.ray.intersectPlane(this.dragPlane, intersection)) {
-          this.dragOffset.subVectors(targetObj.position, intersection);
-        } else {
-          this.dragOffset.set(0, 0, 0);
-        }
-        this.orbitControls.enabled = false;
-      }
     } else {
-      this.isPointerDownOnEmpty = true;
+      // Check if gizmo was hit
+      let gizmoHit = false;
+      if (this.selectedObjectId && this.gizmoHelper) {
+        try {
+          const gHits = this.raycaster.intersectObject(this.gizmoHelper, true);
+          if (gHits.length > 0) gizmoHit = true;
+        } catch (_) {}
+      }
+      if (!gizmoHit) {
+        this.isPointerDownOnEmpty = true;
+      }
     }
   };
 
   onPointerUp = (event: PointerEvent) => {
-    if (this.isDraggingObject) {
-      this.isDraggingObject = false;
-      this.draggedMesh = null;
-      // Only re-enable orbit if not in listener view (which disables orbit)
-      this.orbitControls.enabled = this.currentView !== "listener";
-    }
-
     if (this.isPointerDownOnEmpty) {
       const dist = Math.hypot(event.clientX - this.pointerDownScreenPos.x, event.clientY - this.pointerDownScreenPos.y);
       if (dist < 6) {
@@ -1106,8 +1090,11 @@ export class BelugaScene {
           const yawRad = (listener.orientation.yaw * Math.PI) / 180;
           const forward = new THREE.Vector3(Math.sin(yawRad), 0, -Math.cos(yawRad));
           targetPos.copy(tp);
-          targetLookAt.copy(tp).add(forward.multiplyScalar(2));
-          this.orbitControls.enabled = false;
+          targetLookAt.copy(tp).add(forward.multiplyScalar(3));
+          this.orbitControls.enabled = true;
+          this.orbitControls.minDistance = 0.01;
+          this.orbitControls.maxDistance = 30;
+          this.orbitControls.target.copy(targetLookAt);
         }
         break;
       }

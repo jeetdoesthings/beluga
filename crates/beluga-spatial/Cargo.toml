@@ -1,0 +1,8 @@
+[package]
+name = "beluga-spatial"
+version = "0.3.0"
+edition = "2021"
+
+[dependencies]
+beluga-core = { path = "../beluga-core" }
+beluga-dsp = { path = "../beluga-dsp" }

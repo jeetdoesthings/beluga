@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = [
+    "beluga-core",
+    "beluga-dsp",
+    "beluga-spatial",
+    "beluga-room",
+    "beluga-audio-io",
+]

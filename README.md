@@ -3,7 +3,8 @@
 **A room-aware, hardware-agnostic spatial audio platform and 3D visualizer.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests: 90 passing](https://img.shields.io/badge/tests-90%20passing-brightgreen.svg)](#running-tests)
+[![Tests: 90+73 passing](https://img.shields.io/badge/tests-90%20Python%20%2B%2073%20Rust-brightgreen.svg)](#running-tests)
+[![Version: 0.3.0](https://img.shields.io/badge/version-0.3.0-blue.svg)](#overview)
 
 ---
 
@@ -17,12 +18,13 @@ Beluga transforms arbitrary speaker arrangements into the best coherent spatial 
 
 ## Key Features
 
+- **Real-Time Audio Playback**: Native Rust audio engine (CPAL) with real-time VBAP rendering, audio device enumeration, channel mapping, and zero-blocking audio callbacks integrated into the Tauri backend.
 - **3D Interactive Room Visualizer**: Real-time 3D room simulation built with Three.js, featuring smooth orbit navigation, custom transform gizmos, listener orientation rays, and sound source trajectory arcs.
 - **Real-Time VBAP Calculation**: Vector Base Amplitude Panning (VBAP) computes speaker gains and visualizes active energy distribution live as you move virtual sound sources.
 - **Flexible Layout Management**: Instant standard presets (2.0 Stereo, 5.1 Surround, 7.1.4 Atmos) or custom speaker creation with full 3D Cartesian positioning ($X, Y, Z$) and yaw orientation controls.
-- **Clean DAW-Style UI**: Modern, light-mode interface with a slim left icon toolbar, tabbed bottom controls (Room, Listener, Source, Speakers), and contextual floating inspectors.
+- **Clean DAW-Style UI**: Modern, light-mode interface with a slim left icon toolbar, tabbed bottom controls (Room, Listener, Source, Speakers), contextual floating inspectors, and an Audio Engine panel for device selection and transport.
 - **Project Import/Export**: Save and load complete room configurations as JSON, or import 3D GLB room models.
-- **Math Research Core**: Pure Python spatial audio research suite covering delay alignment, gain smoothing, coordinate transformations, and offline per-speaker WAV rendering.
+- **Math Research Core**: Pure Python spatial audio research suite covering delay alignment, gain smoothing, coordinate transformations, and offline per-speaker WAV rendering. Rust crates (beluga-core, beluga-dsp, beluga-spatial, beluga-room, beluga-audio-io) provide the real-time counterpart with 73 passing tests.
 
 ---
 
@@ -91,6 +93,16 @@ npm run tauri dev
    python -m beluga.cli --demo
    ```
 
+### Running Rust Tests
+
+From the project root:
+```bash
+cd crates
+cargo test       # 73 tests across 5 crates
+cargo clippy -- --deny warnings
+cargo fmt --check
+```
+
 ---
 
 ## Project Structure
@@ -103,15 +115,25 @@ beluga/
 │       │   ├── three/      # Three.js 3D Scene, gizmos, and render loops
 │       │   ├── types/      # Project data structures & schemas
 │       │   ├── App.tsx     # UI controller and DAW layout
+│       │   ├── audio.ts    # Tauri bridge for real-time audio engine
+│       │   ├── components/ # UI components (AudioControls, etc.)
 │       │   ├── styles.css  # Design system tokens and styles
 │       │   └── vbap.ts     # Client-side real-time VBAP math engine
 │       ├── src-tauri/      # Tauri desktop configuration & Rust backend
+│       │   └── src/main.rs # Backend commands (save/load, audio device control)
 │       └── package.json
+├── crates/                 # Rust workspace (0.3 real-time audio engine)
+│   ├── Cargo.toml          # Workspace manifest (5 crates)
+│   ├── beluga-core/        # Vector3, Orientation, geometry, project models
+│   ├── beluga-dsp/         # Gain smoothing, fractional delay, gain management
+│   ├── beluga-spatial/     # VBAP, real-time renderer, spatial scene
+│   ├── beluga-room/        # Room geometry, bounding boxes
+│   └── beluga-audio-io/    # CPAL device enumeration, channel mapping, audio engine
 ├── research/
 │   └── python/             # Python spatial audio research package
 │       ├── beluga/         # Geometry, VBAP, gain smoothing, delay alignment
 │       └── tests/          # 90 pytest unit & integration tests
-├── pyproject.toml          # Python project configuration
+├── pyproject.toml          # Python project configuration (v0.3.0)
 ├── requirements.txt        # Python requirements
 └── README.md
 ```
