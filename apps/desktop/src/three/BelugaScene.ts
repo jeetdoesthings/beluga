@@ -562,6 +562,7 @@ export class BelugaScene {
       shininess: 40,
     });
     const head = new THREE.Mesh(headGeo, headMat);
+    head.name = "head";
     group.add(head);
 
     const visorGeo = new THREE.BoxGeometry(0.22, 0.06, 0.12);
@@ -638,6 +639,7 @@ export class BelugaScene {
       side: THREE.DoubleSide,
     });
     const mesh = new THREE.Mesh(geo, mat);
+    mesh.name = "sourceSphere";
     group.add(mesh);
 
     const ringGeo = new THREE.RingGeometry(0.2, 0.28, 32);
@@ -743,13 +745,33 @@ export class BelugaScene {
   }
 
   rebuildSelectionVisuals() {
+    // 1. Speakers
     for (const m of this.speakerMeshes) {
       const sel = m.userData.id === this.selectedObjectId;
       const cab = m.getObjectByName("cabinet") as THREE.Mesh | undefined;
       if (cab && cab.material) {
-        (cab.material as THREE.MeshStandardMaterial).emissive.setHex(sel ? 0x003366 : 0x000000);
+        (cab.material as THREE.MeshStandardMaterial).emissive.setHex(sel ? 0x004488 : 0x000000);
       }
     }
+
+    // 2. Listener
+    if (this.listenerGroupObj) {
+      const isSel = this.selectedObjectId === "listener";
+      const head = this.listenerGroupObj.getObjectByName("head") as THREE.Mesh | undefined;
+      if (head && head.material) {
+        (head.material as THREE.MeshPhongMaterial).emissive.setHex(isSel ? 0x994400 : 0x442200);
+      }
+    }
+
+    // 3. Virtual Source
+    if (this.sourceGroup) {
+      const isSel = this.selectedObjectId === "source";
+      const src = this.sourceGroup.getObjectByName("sourceSphere") as THREE.Mesh | undefined;
+      if (src && src.material) {
+        (src.material as THREE.MeshPhongMaterial).emissive.setHex(isSel ? 0xdd22ff : 0x8800cc);
+      }
+    }
+
     this.reattachGizmo();
   }
 
