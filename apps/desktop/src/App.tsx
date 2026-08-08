@@ -14,7 +14,7 @@ import {
 } from "./types/project";
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PREMIUM SVG ICON LIBRARY (Pro Studio / Feather / Lucide Style)
+   CLEAN INLINE SVG ICONS
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const Icons = {
@@ -30,26 +30,12 @@ const Icons = {
       <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
     </svg>
   ),
-  Stereo: () => (
+  Presets: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="6" height="16" rx="2" /><circle cx="6" cy="14" r="1.5" /><circle cx="6" cy="8" r="0.8" />
-      <rect x="15" y="4" width="6" height="16" rx="2" /><circle cx="18" cy="14" r="1.5" /><circle cx="18" cy="8" r="0.8" />
-    </svg>
-  ),
-  Surround51: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="9" strokeDasharray="3 3" />
-      <circle cx="12" cy="12" r="2.5" fill="currentColor" />
-      <circle cx="6" cy="7" r="1.5" /><circle cx="18" cy="7" r="1.5" /><circle cx="12" cy="4" r="1.5" />
-      <circle cx="5" cy="17" r="1.5" /><circle cx="19" cy="17" r="1.5" />
-    </svg>
-  ),
-  Spatial714: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="9" />
-      <ellipse cx="12" cy="12" rx="9" ry="4" strokeDasharray="2 2" />
-      <circle cx="12" cy="12" r="2" fill="currentColor" />
-      <path d="M12 3v3m0 12v3M3 12h3m12 0h3" />
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
     </svg>
   ),
   Trash: () => (
@@ -97,11 +83,6 @@ const Icons = {
       <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
     </svg>
   ),
-  ScaleGizmo: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" />
-    </svg>
-  ),
   Focus: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" /><circle cx="12" cy="12" r="2" />
@@ -137,14 +118,14 @@ const Icons = {
       <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   ),
-  ChevronUp: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="18 15 12 9 6 15" />
-    </svg>
-  ),
   ChevronDown: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="6 9 12 15 18 9" />
+    </svg>
+  ),
+  ChevronUp: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="18 15 12 9 6 15" />
     </svg>
   ),
 };
@@ -165,8 +146,8 @@ export default function App() {
   const [transformMode, setTransformMode] = useState<"translate" | "rotate" | "scale">("translate");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [confirmPreset, setConfirmPreset] = useState<{ name: string; fn: (p: BelugaProject) => BelugaProject } | null>(null);
-  const [bottomTab, setBottomTab] = useState<"speakers" | "room" | "listener" | "source">("speakers");
-  const [isDeckCollapsed, setIsDeckCollapsed] = useState(false);
+  const [bottomTab, setBottomTab] = useState<"room" | "listener" | "source">("room");
+  const [isDockCollapsed, setIsDockCollapsed] = useState(false);
   const speakerCounter = useRef(0);
 
   const showToast = (msg: string) => {
@@ -195,7 +176,6 @@ export default function App() {
       setSelectedId(id);
       if (id === "listener") setBottomTab("listener");
       else if (id === "source") setBottomTab("source");
-      else if (id) setBottomTab("speakers");
     };
 
     scene.onTransformModeChange = (mode) => setTransformMode(mode);
@@ -302,8 +282,9 @@ export default function App() {
   };
 
   const handleRoomChange = (field: keyof typeof project.room, value: number) => {
+    const rounded = parseFloat(value.toFixed(2));
     setProject((prev) => {
-      const updated = { ...prev, room: { ...prev.room, [field]: value } };
+      const updated = { ...prev, room: { ...prev.room, [field]: rounded } };
       if (sceneRef.current) {
         sceneRef.current.project = updated;
         sceneRef.current.buildRoom();
@@ -340,9 +321,10 @@ export default function App() {
   };
 
   const handleSpeakerPosChange = (id: string, field: keyof Vector3, value: number) => {
+    const rounded = parseFloat(value.toFixed(2));
     setProject((prev) => {
       const updatedSpeakers = prev.speakers.map((s) =>
-        s.id === id ? { ...s, position: { ...s.position, [field]: value } } : s
+        s.id === id ? { ...s, position: { ...s.position, [field]: rounded } } : s
       );
       const updated = { ...prev, speakers: updatedSpeakers };
       const spk = updatedSpeakers.find((s) => s.id === id);
@@ -355,9 +337,10 @@ export default function App() {
   };
 
   const handleSpeakerOrientChange = (id: string, field: keyof Orientation, value: number) => {
+    const rounded = parseFloat(value.toFixed(1));
     setProject((prev) => {
       const updatedSpeakers = prev.speakers.map((s) =>
-        s.id === id ? { ...s, orientation: { ...s.orientation, [field]: value } } : s
+        s.id === id ? { ...s, orientation: { ...s.orientation, [field]: rounded } } : s
       );
       const updated = { ...prev, speakers: updatedSpeakers };
       const spk = updatedSpeakers.find((s) => s.id === id);
@@ -370,11 +353,12 @@ export default function App() {
   };
 
   const handleListenerPosChange = (field: keyof Vector3, value: number) => {
+    const rounded = parseFloat(value.toFixed(2));
     setProject((prev) => {
       const updatedListeners = prev.listeners.map((l, i) => {
         if (i !== 0) return l;
-        const newPos = { ...l.position, [field]: value };
-        const newEarHeight = field === "z" ? value : l.earHeight;
+        const newPos = { ...l.position, [field]: rounded };
+        const newEarHeight = field === "z" ? rounded : l.earHeight;
         return { ...l, position: newPos, earHeight: newEarHeight };
       });
       const updated = { ...prev, listeners: updatedListeners };
@@ -388,9 +372,10 @@ export default function App() {
   };
 
   const handleListenerEarHeightChange = (value: number) => {
+    const rounded = parseFloat(value.toFixed(2));
     setProject((prev) => {
       const updatedListeners = prev.listeners.map((l, i) =>
-        i === 0 ? { ...l, earHeight: value, position: { ...l.position, z: value } } : l
+        i === 0 ? { ...l, earHeight: rounded, position: { ...l.position, z: rounded } } : l
       );
       const updated = { ...prev, listeners: updatedListeners };
       const listener = updatedListeners[0];
@@ -403,9 +388,10 @@ export default function App() {
   };
 
   const handleListenerOrientChange = (yaw: number) => {
+    const rounded = parseFloat(yaw.toFixed(1));
     setProject((prev) => {
       const updatedListeners = prev.listeners.map((l, i) =>
-        i === 0 ? { ...l, orientation: { ...l.orientation, yaw } } : l
+        i === 0 ? { ...l, orientation: { ...l.orientation, yaw: rounded } } : l
       );
       const updated = { ...prev, listeners: updatedListeners };
       const listener = updatedListeners[0];
@@ -418,8 +404,9 @@ export default function App() {
   };
 
   const handleSourceChange = (field: "azimuth" | "elevation" | "distance", value: number) => {
+    const rounded = field === "distance" ? parseFloat(value.toFixed(2)) : parseFloat(value.toFixed(1));
     setProject((prev) => {
-      const updatedSource = { ...prev.virtualSource, [field]: value };
+      const updatedSource = { ...prev.virtualSource, [field]: rounded };
       const updated = { ...prev, virtualSource: updatedSource };
       if (sceneRef.current) {
         sceneRef.current.project = updated;
@@ -435,6 +422,14 @@ export default function App() {
     } else {
       executePreset(presetFn, name);
     }
+  };
+
+  const handlePresetSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    if (val === "stereo") applyPreset(createStereoPreset, "Stereo 2.0");
+    else if (val === "5.1") applyPreset(create51Preset, "Surround 5.1");
+    else if (val === "7.1.4") applyPreset(create714Preset, "Spatial Atmos 7.1.4");
+    e.target.value = ""; // Reset dropdown after selection
   };
 
   const executePreset = (presetFn: (p: BelugaProject) => BelugaProject, name: string) => {
@@ -513,8 +508,8 @@ export default function App() {
   // Selection references
   const selectedSpeaker = project.speakers.find((s) => s.id === selectedId);
   const listener = project.listeners[0] || {
-    position: { x: 0, y: 0, z: 1.2 },
-    earHeight: 1.2,
+    position: { x: 0, y: 0, z: 1.1 },
+    earHeight: 1.1,
     orientation: { yaw: 0, pitch: 0, roll: 0 },
   };
   const isListenerSelected = selectedId === "listener";
@@ -525,7 +520,6 @@ export default function App() {
   const selectedSpeakerGain = selectedSpeakerIdx >= 0 ? sceneUpdate.speakerGains[selectedSpeakerIdx] ?? 0 : 0;
   const selectedSpeakerAzimuth = selectedSpeakerIdx >= 0 ? sceneUpdate.speakerAzimuths[selectedSpeakerIdx] ?? 0 : 0;
   const selectedSpeakerDist = selectedSpeakerIdx >= 0 ? sceneUpdate.speakerDistances[selectedSpeakerIdx] ?? 0 : 0;
-  const selectedSpeakerElev = selectedSpeakerIdx >= 0 ? sceneUpdate.speakerElevations[selectedSpeakerIdx] ?? 0 : 0;
 
   return (
     <div className="app-shell">
@@ -544,30 +538,6 @@ export default function App() {
         </button>
 
         <div className="rail-divider" />
-
-        <button
-          className="rail-btn"
-          onClick={() => applyPreset(createStereoPreset, "Stereo 2.0")}
-          data-tooltip="Stereo 2.0 Preset"
-        >
-          <Icons.Stereo />
-        </button>
-
-        <button
-          className="rail-btn"
-          onClick={() => applyPreset(create51Preset, "Surround 5.1")}
-          data-tooltip="Surround 5.1 Preset"
-        >
-          <Icons.Surround51 />
-        </button>
-
-        <button
-          className="rail-btn"
-          onClick={() => applyPreset(create714Preset, "Atmos 7.1.4")}
-          data-tooltip="Spatial 7.1.4 Preset"
-        >
-          <Icons.Spatial714 />
-        </button>
 
         <button
           className="rail-btn danger"
@@ -589,11 +559,11 @@ export default function App() {
         </label>
       </div>
 
-      {/* ─── Main Content (3D Viewport + Bottom Deck) ─── */}
+      {/* ─── Main Content (3D Viewport + Overlays) ─── */}
       <div className="main-content">
         {/* 3D Viewport Container */}
         <div className="viewport-container" ref={containerRef}>
-          {/* Top Center Floating Navigation Bar */}
+          {/* Top Center Floating Navigation Bar with Single Presets Dropdown */}
           <div className="top-control-bar glass-overlay">
             {/* Camera Perspectives */}
             <div className="control-segment">
@@ -652,6 +622,26 @@ export default function App() {
 
             <div className="control-divider" />
 
+            {/* Single Unified Presets Dropdown */}
+            <div className="preset-dropdown-wrap">
+              <select
+                className="preset-select"
+                value=""
+                onChange={handlePresetSelectChange}
+                aria-label="Select Speaker Layout Preset"
+              >
+                <option value="" disabled>✨ Layout Presets</option>
+                <option value="stereo">Stereo 2.0 (2 Channels)</option>
+                <option value="5.1">Surround 5.1 (6 Channels)</option>
+                <option value="7.1.4">Spatial Atmos 7.1.4 (12 Channels)</option>
+              </select>
+              <span className="preset-chevron">
+                <Icons.ChevronDown />
+              </span>
+            </div>
+
+            <div className="control-divider" />
+
             {/* Live Audio Engine Status */}
             <div className="status-pill">
               <span className="live-dot" />
@@ -659,7 +649,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Top-Left Floating VBAP Acoustic Meter Panel */}
+          {/* Top-Left Floating VBAP Acoustic Meter Panel (Selecting speaker selects in 3D) */}
           <div className="gain-meter-panel glass-overlay">
             <div className="panel-header">
               <div className="panel-title">
@@ -670,7 +660,7 @@ export default function App() {
             <div className="gain-list">
               {project.speakers.length === 0 ? (
                 <div style={{ color: "var(--text-muted)", fontSize: 11, padding: "8px 4px" }}>
-                  No speakers in room. Click '+' or a preset to add.
+                  No speakers in room. Click '+' to add or select a layout preset.
                 </div>
               ) : (
                 project.speakers.map((s, idx) => {
@@ -685,6 +675,7 @@ export default function App() {
                       key={s.id}
                       className={`gain-item ${isSel ? "selected" : ""} ${activeGain ? "active-gain" : ""}`}
                       onClick={() => handleSelectObject(s.id)}
+                      title="Click to select and focus speaker in 3D"
                     >
                       <div className="gain-item-top">
                         <span className="gain-item-name">
@@ -720,7 +711,7 @@ export default function App() {
                       </div>
 
                       <div className="gain-item-coords">
-                        Az: {az.toFixed(0)}° · Dist: {dist.toFixed(2)}m
+                        [{s.position.x.toFixed(2)}, {s.position.y.toFixed(2)}, {s.position.z.toFixed(2)}] · Az: {az.toFixed(1)}° · {dist.toFixed(2)}m
                       </div>
                     </div>
                   );
@@ -729,7 +720,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Top-Right Floating Contextual Inspector (For ANY selected object or room) */}
+          {/* Top-Right Floating Contextual Inspector */}
           <div className="inspector-panel glass-overlay">
             {/* 1. SPEAKER SELECTED */}
             {selectedSpeaker ? (
@@ -744,7 +735,7 @@ export default function App() {
                       <span className="inspector-subtitle">Loudspeaker Properties</span>
                     </div>
                   </div>
-                  <button className="inspector-close-btn" onClick={() => handleSelectObject(null)}>
+                  <button className="inspector-close-btn" onClick={() => handleSelectObject(null)} title="Deselect">
                     <Icons.Close />
                   </button>
                 </div>
@@ -760,19 +751,20 @@ export default function App() {
                     />
                   </div>
 
+                  {/* Speaker Type / Category in Dropdown */}
                   <div className="form-group">
-                    <label className="form-label">Type / Mount</label>
-                    <div className="category-pills">
+                    <label className="form-label">Speaker Type</label>
+                    <select
+                      className="form-select"
+                      value={selectedSpeaker.category}
+                      onChange={(e) => handleSpeakerCategoryChange(selectedSpeaker.id, e.target.value)}
+                    >
                       {SPEAKER_CATEGORIES.map((cat) => (
-                        <button
-                          key={cat}
-                          className={`cat-pill ${selectedSpeaker.category === cat ? "active" : ""}`}
-                          onClick={() => handleSpeakerCategoryChange(selectedSpeaker.id, cat)}
-                        >
+                        <option key={cat} value={cat}>
                           {cat}
-                        </button>
+                        </option>
                       ))}
-                    </div>
+                    </select>
                   </div>
                 </div>
 
@@ -783,9 +775,9 @@ export default function App() {
                       <span className="coord-cell-label">X (Left/Right)</span>
                       <input
                         type="number"
-                        step="0.1"
+                        step="0.01"
                         className="coord-cell-input"
-                        value={selectedSpeaker.position.x}
+                        value={selectedSpeaker.position.x.toFixed(2)}
                         onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "x", parseFloat(e.target.value) || 0)}
                       />
                     </div>
@@ -793,9 +785,9 @@ export default function App() {
                       <span className="coord-cell-label">Y (Front/Back)</span>
                       <input
                         type="number"
-                        step="0.1"
+                        step="0.01"
                         className="coord-cell-input"
-                        value={selectedSpeaker.position.y}
+                        value={selectedSpeaker.position.y.toFixed(2)}
                         onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "y", parseFloat(e.target.value) || 0)}
                       />
                     </div>
@@ -803,9 +795,9 @@ export default function App() {
                       <span className="coord-cell-label">Z (Height)</span>
                       <input
                         type="number"
-                        step="0.1"
+                        step="0.01"
                         className="coord-cell-input"
-                        value={selectedSpeaker.position.z}
+                        value={selectedSpeaker.position.z.toFixed(2)}
                         onChange={(e) => handleSpeakerPosChange(selectedSpeaker.id, "z", parseFloat(e.target.value) || 0)}
                       />
                     </div>
@@ -816,12 +808,13 @@ export default function App() {
                   <div className="slider-group">
                     <div className="slider-header">
                       <span className="section-label">Facing Yaw Orientation</span>
-                      <span className="slider-readout">{selectedSpeaker.orientation.yaw.toFixed(0)}°</span>
+                      <span className="slider-readout">{selectedSpeaker.orientation.yaw.toFixed(1)}°</span>
                     </div>
                     <input
                       type="range"
                       min="-180"
                       max="180"
+                      step="1"
                       className="studio-slider"
                       value={selectedSpeaker.orientation.yaw}
                       onChange={(e) => handleSpeakerOrientChange(selectedSpeaker.id, "yaw", parseFloat(e.target.value))}
@@ -833,7 +826,7 @@ export default function App() {
                   <span className="section-label">Listener-Relative Acoustic Stats</span>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 11 }}>
                     <span>Gain: <strong>{(selectedSpeakerGain * 100).toFixed(1)}%</strong></span>
-                    <span>Az: <strong>{selectedSpeakerAzimuth.toFixed(0)}°</strong></span>
+                    <span>Az: <strong>{selectedSpeakerAzimuth.toFixed(1)}°</strong></span>
                     <span>Dist: <strong>{selectedSpeakerDist.toFixed(2)}m</strong></span>
                   </div>
                 </div>
@@ -860,7 +853,7 @@ export default function App() {
                       <span className="inspector-subtitle">Reference Listening Position</span>
                     </div>
                   </div>
-                  <button className="inspector-close-btn" onClick={() => handleSelectObject(null)}>
+                  <button className="inspector-close-btn" onClick={() => handleSelectObject(null)} title="Deselect">
                     <Icons.Close />
                   </button>
                 </div>
@@ -872,9 +865,9 @@ export default function App() {
                       <span className="coord-cell-label">X (Left/Right)</span>
                       <input
                         type="number"
-                        step="0.1"
+                        step="0.01"
                         className="coord-cell-input"
-                        value={listener.position.x}
+                        value={listener.position.x.toFixed(2)}
                         onChange={(e) => handleListenerPosChange("x", parseFloat(e.target.value) || 0)}
                       />
                     </div>
@@ -882,9 +875,9 @@ export default function App() {
                       <span className="coord-cell-label">Y (Front/Back)</span>
                       <input
                         type="number"
-                        step="0.1"
+                        step="0.01"
                         className="coord-cell-input"
-                        value={listener.position.y}
+                        value={listener.position.y.toFixed(2)}
                         onChange={(e) => handleListenerPosChange("y", parseFloat(e.target.value) || 0)}
                       />
                     </div>
@@ -892,9 +885,9 @@ export default function App() {
                       <span className="coord-cell-label">Ear Height (Z)</span>
                       <input
                         type="number"
-                        step="0.05"
+                        step="0.01"
                         className="coord-cell-input"
-                        value={listener.earHeight}
+                        value={listener.earHeight.toFixed(2)}
                         onChange={(e) => handleListenerEarHeightChange(parseFloat(e.target.value) || 0)}
                       />
                     </div>
@@ -905,12 +898,13 @@ export default function App() {
                   <div className="slider-group">
                     <div className="slider-header">
                       <span className="section-label">Head Facing Direction</span>
-                      <span className="slider-readout">{listener.orientation.yaw.toFixed(0)}°</span>
+                      <span className="slider-readout">{listener.orientation.yaw.toFixed(1)}°</span>
                     </div>
                     <input
                       type="range"
                       min="-180"
                       max="180"
+                      step="1"
                       className="studio-slider"
                       value={listener.orientation.yaw}
                       onChange={(e) => handleListenerOrientChange(parseFloat(e.target.value))}
@@ -918,7 +912,7 @@ export default function App() {
                   </div>
 
                   <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                    <button className="cat-pill" onClick={() => handleListenerOrientChange(0)}>Face Front (0°)</button>
+                    <button className="cat-pill" onClick={() => handleListenerOrientChange(0)}>Front (0°)</button>
                     <button className="cat-pill" onClick={() => handleListenerOrientChange(90)}>Right (90°)</button>
                     <button className="cat-pill" onClick={() => handleListenerOrientChange(180)}>Back (180°)</button>
                     <button className="cat-pill" onClick={() => handleListenerOrientChange(-90)}>Left (-90°)</button>
@@ -947,7 +941,7 @@ export default function App() {
                       <span className="inspector-subtitle">Spatial Audio Object (VBAP)</span>
                     </div>
                   </div>
-                  <button className="inspector-close-btn" onClick={() => handleSelectObject(null)}>
+                  <button className="inspector-close-btn" onClick={() => handleSelectObject(null)} title="Deselect">
                     <Icons.Close />
                   </button>
                 </div>
@@ -956,12 +950,13 @@ export default function App() {
                   <div className="slider-group">
                     <div className="slider-header">
                       <span className="section-label">Azimuth Angle</span>
-                      <span className="slider-readout">{project.virtualSource.azimuth.toFixed(0)}°</span>
+                      <span className="slider-readout">{project.virtualSource.azimuth.toFixed(1)}°</span>
                     </div>
                     <input
                       type="range"
                       min="-180"
                       max="180"
+                      step="1"
                       className="studio-slider"
                       value={project.virtualSource.azimuth}
                       onChange={(e) => handleSourceChange("azimuth", parseFloat(e.target.value))}
@@ -978,12 +973,13 @@ export default function App() {
                   <div className="slider-group" style={{ marginTop: 8 }}>
                     <div className="slider-header">
                       <span className="section-label">Elevation Angle</span>
-                      <span className="slider-readout">{(project.virtualSource.elevation || 0).toFixed(0)}°</span>
+                      <span className="slider-readout">{(project.virtualSource.elevation || 0).toFixed(1)}°</span>
                     </div>
                     <input
                       type="range"
                       min="-90"
                       max="90"
+                      step="1"
                       className="studio-slider"
                       value={project.virtualSource.elevation || 0}
                       onChange={(e) => handleSourceChange("elevation", parseFloat(e.target.value))}
@@ -999,7 +995,7 @@ export default function App() {
                       type="range"
                       min="0.5"
                       max="8"
-                      step="0.1"
+                      step="0.05"
                       className="studio-slider"
                       value={project.virtualSource.distance}
                       onChange={(e) => handleSourceChange("distance", parseFloat(e.target.value))}
@@ -1038,10 +1034,10 @@ export default function App() {
                       <span className="coord-cell-label">Length (Y)</span>
                       <input
                         type="number"
-                        step="0.5"
+                        step="0.01"
                         min="1"
                         className="coord-cell-input"
-                        value={project.room.length}
+                        value={project.room.length.toFixed(2)}
                         onChange={(e) => handleRoomChange("length", parseFloat(e.target.value) || 1)}
                       />
                     </div>
@@ -1049,10 +1045,10 @@ export default function App() {
                       <span className="coord-cell-label">Width (X)</span>
                       <input
                         type="number"
-                        step="0.5"
+                        step="0.01"
                         min="1"
                         className="coord-cell-input"
-                        value={project.room.width}
+                        value={project.room.width.toFixed(2)}
                         onChange={(e) => handleRoomChange("width", parseFloat(e.target.value) || 1)}
                       />
                     </div>
@@ -1060,10 +1056,10 @@ export default function App() {
                       <span className="coord-cell-label">Height (Z)</span>
                       <input
                         type="number"
-                        step="0.2"
+                        step="0.01"
                         min="1"
                         className="coord-cell-input"
-                        value={project.room.height}
+                        value={project.room.height.toFixed(2)}
                         onChange={(e) => handleRoomChange("height", parseFloat(e.target.value) || 1)}
                       />
                     </div>
@@ -1073,231 +1069,132 @@ export default function App() {
                 <div className="field-section" style={{ background: "rgba(248,250,252,0.8)", padding: 10, borderRadius: 8, border: "1px solid var(--border-subtle)" }}>
                   <span className="section-label">Calculated Room Acoustics</span>
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 11 }}>
-                    <span>Floor Area: <strong>{(project.room.length * project.room.width).toFixed(1)} m²</strong></span>
-                    <span>Volume: <strong>{(project.room.length * project.room.width * project.room.height).toFixed(1)} m³</strong></span>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 8 }}>
-                  <span className="section-label" style={{ display: "block", marginBottom: 6 }}>Direct Layout Presets</span>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <button className="action-btn" style={{ flex: 1 }} onClick={() => applyPreset(createStereoPreset, "Stereo 2.0")}>
-                      Stereo
-                    </button>
-                    <button className="action-btn" style={{ flex: 1 }} onClick={() => applyPreset(create51Preset, "5.1 Surround")}>
-                      5.1
-                    </button>
-                    <button className="action-btn" style={{ flex: 1 }} onClick={() => applyPreset(create714Preset, "7.1.4 Atmos")}>
-                      7.1.4
-                    </button>
+                    <span>Floor Area: <strong>{(project.room.length * project.room.width).toFixed(2)} m²</strong></span>
+                    <span>Volume: <strong>{(project.room.length * project.room.width * project.room.height).toFixed(2)} m³</strong></span>
                   </div>
                 </div>
               </>
             )}
           </div>
-        </div>
 
-        {/* ─── Bottom Studio Deck (Tabbed Console) ─── */}
-        <div className={`studio-deck ${isDeckCollapsed ? "collapsed" : ""}`}>
-          {/* Deck Navigation Bar */}
-          <div className="deck-nav-bar">
-            <div className="deck-tabs">
-              <button
-                className={`deck-tab ${bottomTab === "speakers" ? "active" : ""}`}
-                onClick={() => { setBottomTab("speakers"); setIsDeckCollapsed(false); }}
-              >
-                <Icons.Speaker />
-                Speakers
-                <span className="tab-counter">{project.speakers.length}</span>
-              </button>
+          {/* ─── Floating Transparent & Centered Bottom Window (Minimalistic) ─── */}
+          <div className="floating-bottom-dock glass-overlay">
+            {/* Dock Minimalist Navigation Bar */}
+            <div className="dock-nav-bar">
+              <div className="dock-tabs">
+                <button
+                  className={`dock-tab ${bottomTab === "room" ? "active" : ""}`}
+                  onClick={() => { setBottomTab("room"); setIsDockCollapsed(false); }}
+                >
+                  <Icons.Room />
+                  Room Geometry
+                </button>
+
+                <button
+                  className={`dock-tab ${bottomTab === "listener" ? "active" : ""}`}
+                  onClick={() => { setBottomTab("listener"); setIsDockCollapsed(false); handleSelectObject("listener"); }}
+                >
+                  <Icons.Listener />
+                  Listener Sweet Spot
+                </button>
+
+                <button
+                  className={`dock-tab ${bottomTab === "source" ? "active" : ""}`}
+                  onClick={() => { setBottomTab("source"); setIsDockCollapsed(false); handleSelectObject("source"); }}
+                >
+                  <Icons.Source />
+                  Audio Source
+                </button>
+              </div>
+
+              <div className="dock-nav-spacer" />
 
               <button
-                className={`deck-tab ${bottomTab === "room" ? "active" : ""}`}
-                onClick={() => { setBottomTab("room"); setIsDeckCollapsed(false); }}
+                className="dock-toggle-btn"
+                onClick={() => setIsDockCollapsed(!isDockCollapsed)}
+                title={isDockCollapsed ? "Expand Window" : "Collapse Window"}
               >
-                <Icons.Room />
-                Room Acoustics
-              </button>
-
-              <button
-                className={`deck-tab ${bottomTab === "listener" ? "active" : ""}`}
-                onClick={() => { setBottomTab("listener"); setIsDeckCollapsed(false); handleSelectObject("listener"); }}
-              >
-                <Icons.Listener />
-                Listener
-              </button>
-
-              <button
-                className={`deck-tab ${bottomTab === "source" ? "active" : ""}`}
-                onClick={() => { setBottomTab("source"); setIsDeckCollapsed(false); handleSelectObject("source"); }}
-              >
-                <Icons.Source />
-                Audio Source
+                {isDockCollapsed ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
               </button>
             </div>
 
-            <div className="deck-nav-spacer" />
+            {/* Minimalist Dock Body */}
+            {!isDockCollapsed && (
+              <div className="dock-body">
+                {/* Tab 1: ROOM GEOMETRY */}
+                {bottomTab === "room" && (
+                  <>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Length (Y)</span>
+                      <span className="dock-stat-value">{project.room.length.toFixed(2)} m</span>
+                    </div>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Width (X)</span>
+                      <span className="dock-stat-value">{project.room.width.toFixed(2)} m</span>
+                    </div>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Height (Z)</span>
+                      <span className="dock-stat-value">{project.room.height.toFixed(2)} m</span>
+                    </div>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Floor Area</span>
+                      <span className="dock-stat-value">{(project.room.length * project.room.width).toFixed(2)} m²</span>
+                    </div>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Volume</span>
+                      <span className="dock-stat-value">
+                        {(project.room.length * project.room.width * project.room.height).toFixed(2)} m³
+                      </span>
+                    </div>
+                  </>
+                )}
 
-            <button
-              className="deck-toggle-btn"
-              onClick={() => setIsDeckCollapsed(!isDeckCollapsed)}
-              title={isDeckCollapsed ? "Expand Deck" : "Collapse Deck"}
-            >
-              {isDeckCollapsed ? <Icons.ChevronUp /> : <Icons.ChevronDown />}
-            </button>
+                {/* Tab 2: LISTENER */}
+                {bottomTab === "listener" && (
+                  <>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Position [X, Y]</span>
+                      <span className="dock-stat-value">
+                        [{listener.position.x.toFixed(2)}, {listener.position.y.toFixed(2)}] m
+                      </span>
+                    </div>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Ear Height</span>
+                      <span className="dock-stat-value">{listener.earHeight.toFixed(2)} m</span>
+                    </div>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Facing Yaw</span>
+                      <span className="dock-stat-value">{listener.orientation.yaw.toFixed(1)}°</span>
+                    </div>
+                    <button className="action-btn" onClick={() => handleSetView("listener")}>
+                      <Icons.ListenerView /> POV Camera
+                    </button>
+                  </>
+                )}
+
+                {/* Tab 3: VIRTUAL SOURCE */}
+                {bottomTab === "source" && (
+                  <>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Azimuth</span>
+                      <span className="dock-stat-value">{project.virtualSource.azimuth.toFixed(1)}°</span>
+                    </div>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Elevation</span>
+                      <span className="dock-stat-value">{(project.virtualSource.elevation || 0).toFixed(1)}°</span>
+                    </div>
+                    <div className="dock-stat-box">
+                      <span className="dock-stat-label">Distance</span>
+                      <span className="dock-stat-value">{project.virtualSource.distance.toFixed(2)} m</span>
+                    </div>
+                    <button className="action-btn" onClick={() => { handleSourceChange("azimuth", 0); handleSourceChange("elevation", 0); }}>
+                      Reset Center
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
-
-          {/* Deck Body Content */}
-          {!isDeckCollapsed && (
-            <div className="deck-body">
-              {/* Tab 1: SPEAKERS CARD SHELF */}
-              {bottomTab === "speakers" && (
-                <div className="speaker-shelf">
-                  <div
-                    className={`add-speaker-card ${placingSpeaker ? "placing" : ""}`}
-                    onClick={handleAddSpeaker}
-                  >
-                    <Icons.Plus />
-                    <span>{placingSpeaker ? "Click Floor..." : "Add Speaker"}</span>
-                  </div>
-
-                  {project.speakers.map((s, idx) => {
-                    const gain = sceneUpdate.speakerGains[idx] ?? 0;
-                    const isSel = s.id === selectedId;
-                    const activeGain = gain > 0.01;
-
-                    return (
-                      <div
-                        key={s.id}
-                        className={`speaker-card ${isSel ? "selected" : ""}`}
-                        onClick={() => handleSelectObject(s.id)}
-                      >
-                        <div className="speaker-card-top">
-                          <div className="speaker-card-header">
-                            <span
-                              className="speaker-status-dot"
-                              style={{
-                                background: activeGain ? "var(--accent-blue)" : "#cbd5e1",
-                                boxShadow: activeGain ? "0 0 6px var(--accent-blue)" : "none",
-                              }}
-                            />
-                            <span className="speaker-card-name">{s.name}</span>
-                          </div>
-                          <button
-                            className="speaker-delete-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveSpeaker(s.id);
-                            }}
-                            title="Remove Speaker"
-                          >
-                            <Icons.Close />
-                          </button>
-                        </div>
-
-                        <div className="speaker-card-mid">
-                          <span className="gain-badge">{s.category}</span>
-                          <span>{(gain * 100).toFixed(0)}% Gain</span>
-                        </div>
-
-                        <div className="gain-meter-track">
-                          <div
-                            className="gain-meter-bar"
-                            style={{
-                              width: `${Math.min(100, Math.max(0, gain * 100))}%`,
-                              background: "linear-gradient(90deg, #06b6d4, #2563eb)",
-                            }}
-                          />
-                        </div>
-
-                        <div className="speaker-card-bottom">
-                          <span style={{ color: "var(--text-muted)" }}>
-                            [{s.position.x.toFixed(1)}, {s.position.y.toFixed(1)}, {s.position.z.toFixed(1)}]
-                          </span>
-                          <span style={{ color: "var(--text-secondary)" }}>{s.orientation.yaw.toFixed(0)}°</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Tab 2: ROOM GEOMETRY */}
-              {bottomTab === "room" && (
-                <div className="deck-row-content">
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Length (Y-Axis)</span>
-                    <span className="deck-stat-value">{project.room.length.toFixed(1)} m</span>
-                  </div>
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Width (X-Axis)</span>
-                    <span className="deck-stat-value">{project.room.width.toFixed(1)} m</span>
-                  </div>
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Height (Z-Axis)</span>
-                    <span className="deck-stat-value">{project.room.height.toFixed(1)} m</span>
-                  </div>
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Floor Area</span>
-                    <span className="deck-stat-value">{(project.room.length * project.room.width).toFixed(1)} m²</span>
-                  </div>
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Room Volume</span>
-                    <span className="deck-stat-value">
-                      {(project.room.length * project.room.width * project.room.height).toFixed(1)} m³
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab 3: LISTENER */}
-              {bottomTab === "listener" && (
-                <div className="deck-row-content">
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Position X, Y</span>
-                    <span className="deck-stat-value">
-                      {listener.position.x.toFixed(2)}m, {listener.position.y.toFixed(2)}m
-                    </span>
-                  </div>
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Ear Height</span>
-                    <span className="deck-stat-value">{listener.earHeight.toFixed(2)} m</span>
-                  </div>
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Facing Yaw</span>
-                    <span className="deck-stat-value">{listener.orientation.yaw.toFixed(0)}°</span>
-                  </div>
-                  <button className="action-btn" onClick={() => handleSetView("listener")}>
-                    <Icons.ListenerView /> Switch to POV Camera
-                  </button>
-                  <button className="action-btn" onClick={() => handleSelectObject("listener")}>
-                    Open Listener Inspector
-                  </button>
-                </div>
-              )}
-
-              {/* Tab 4: VIRTUAL SOURCE */}
-              {bottomTab === "source" && (
-                <div className="deck-row-content">
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Azimuth Angle</span>
-                    <span className="deck-stat-value">{project.virtualSource.azimuth.toFixed(0)}°</span>
-                  </div>
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Elevation Angle</span>
-                    <span className="deck-stat-value">{(project.virtualSource.elevation || 0).toFixed(0)}°</span>
-                  </div>
-                  <div className="deck-stat-box">
-                    <span className="deck-stat-label">Distance to Listener</span>
-                    <span className="deck-stat-value">{project.virtualSource.distance.toFixed(2)} m</span>
-                  </div>
-                  <button className="action-btn" onClick={() => handleSelectObject("source")}>
-                    Open Source Inspector
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
 

@@ -604,7 +604,7 @@ export class BelugaScene {
       listener.earHeight = pos.z;
     }
     if (this.listenerGroupObj) this.listenerGroupObj.position.copy(this.belugaToThree(pos));
-    this.buildSource();
+    this.recomputeSourceRelativePolar();
     this.updateSelectionHalo();
     this.reattachGizmo();
     this.updateGainVisualization();
@@ -616,9 +616,25 @@ export class BelugaScene {
     if (this.listenerGroupObj) {
       this.listenerGroupObj.rotation.y = -(orient.yaw * Math.PI) / 180;
     }
-    this.buildSource();
+    this.recomputeSourceRelativePolar();
     this.reattachGizmo();
     this.updateGainVisualization();
+  }
+
+  recomputeSourceRelativePolar() {
+    if (!this.sourceGroup) return;
+    const listener = this.project.listeners[0];
+    if (!listener) return;
+
+    const sourceWorldPos = this.threeToBeluga(this.sourceGroup.position);
+    const rel = toListenerRelative(sourceWorldPos, listener.position, listener.orientation);
+    this.project.virtualSource.azimuth = rel.azimuth;
+    this.project.virtualSource.elevation = rel.elevation;
+    this.project.virtualSource.distance = rel.distance;
+
+    if (this.onSourceMove) {
+      this.onSourceMove(rel.azimuth, rel.elevation, rel.distance);
+    }
   }
 
   buildSource() {
@@ -835,8 +851,8 @@ export class BelugaScene {
         listener.earHeight = belugaPos.z;
         listener.orientation = orient;
 
-        // Rebuild source so it maintains listener-relative position in world space
-        this.buildSource();
+        // Recompute source polar coordinates relative to the new listener position without moving source in 3D
+        this.recomputeSourceRelativePolar();
         this.reattachGizmo();
 
         if (this.onListenerMove) this.onListenerMove(belugaPos, orient);
@@ -953,17 +969,7 @@ export class BelugaScene {
     this.updateMouseFromEvent(event);
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
-    // 1. Check if user clicked on a 3D Gizmo Arrow handle while an object is selected
-    if (this.selectedObjectId && this.gizmoHelper) {
-      try {
-        const gizmoHits = this.raycaster.intersectObject(this.gizmoHelper, true);
-        if (gizmoHits.length > 0) {
-          return;
-        }
-      } catch (_) { /* fallback */ }
-    }
-
-    // 2. Check if user clicked directly on an interactive scene object (speaker, listener, source)
+    // 1. Check if user clicked directly on an interactive scene object (speaker, listener, source)
     const checkObjects: THREE.Object3D[] = [
       ...this.speakerMeshes,
       ...(this.listenerGroupObj ? [this.listenerGroupObj] : []),
@@ -978,6 +984,19 @@ export class BelugaScene {
       if (parent?.userData?.id) {
         hitId = parent.userData.id;
       }
+    }
+
+    // 2. Check if user clicked on a 3D Gizmo Arrow handle while an object is selected
+    if (this.selectedObjectId && this.gizmoHelper) {
+      try {
+        const gizmoHits = this.raycaster.intersectObject(this.gizmoHelper, true);
+        if (gizmoHits.length > 0) {
+          // If user clicked the gizmo and didn't directly click a different object in front
+          if (!hitId || (hits.length > 0 && gizmoHits[0].distance <= hits[0].distance)) {
+            return;
+          }
+        }
+      } catch (_) { /* fallback */ }
     }
 
     if (hitId) {
