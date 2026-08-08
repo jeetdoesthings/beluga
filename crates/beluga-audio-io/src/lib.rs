@@ -7,6 +7,6 @@ pub mod device;
 pub mod engine;
 pub mod mapping;
 
-pub use device::{AudioDevice, DeviceEnumerator};
+pub use device::{AudioDevice, DeviceCapabilities, DeviceEnumerator};
 pub use engine::{AudioEngine, SourcePosition, Telemetry};
 pub use mapping::ChannelMapping;

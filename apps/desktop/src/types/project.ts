@@ -28,6 +28,7 @@ export interface Speaker {
   position: Vector3;
   orientation: Orientation;
   enabled: boolean;
+  channel?: number | null;  // maps to physical output channel (null = unassigned)
 }
 
 export interface Listener {
@@ -79,7 +80,7 @@ export function createDefaultProject(): BelugaProject {
   };
 }
 
-export function createSpeaker(name: string, position: Vector3, category: string = "Generic"): Speaker {
+export function createSpeaker(name: string, position: Vector3, category: string = "Generic", channel?: number): Speaker {
   return {
     id: crypto.randomUUID(),
     name,
@@ -87,6 +88,7 @@ export function createSpeaker(name: string, position: Vector3, category: string 
     position,
     orientation: { yaw: 0, pitch: 0, roll: 0 },
     enabled: true,
+    channel: channel ?? null,
   };
 }
 
@@ -118,8 +120,8 @@ export function createStereoPreset(project: BelugaProject): BelugaProject {
   return {
     ...project,
     speakers: [
-      createSpeaker("Left (L)", leftPos, "Bookshelf"),
-      createSpeaker("Right (R)", rightPos, "Bookshelf"),
+      createSpeaker("Left (L)", leftPos, "Bookshelf", 0),
+      createSpeaker("Right (R)", rightPos, "Bookshelf", 1),
     ],
   };
 }
@@ -130,13 +132,13 @@ export function create51Preset(project: BelugaProject): BelugaProject {
   const yaw = listener.orientation.yaw;
   const dist = 2.2;
 
-  const spks: { name: string; az: number; cat: string }[] = [
-    { name: "Center (C)", az: 0, cat: "Bookshelf" },
-    { name: "Front Left (FL)", az: -30, cat: "Floorstanding" },
-    { name: "Front Right (FR)", az: 30, cat: "Floorstanding" },
-    { name: "Surround Left (SL)", az: -110, cat: "Bookshelf" },
-    { name: "Surround Right (SR)", az: 110, cat: "Bookshelf" },
-    { name: "Subwoofer (LFE)", az: 45, cat: "Subwoofer" },
+  const spks: { name: string; az: number; cat: string; ch: number }[] = [
+    { name: "Center (C)", az: 0, cat: "Bookshelf", ch: 2 },
+    { name: "Front Left (FL)", az: -30, cat: "Floorstanding", ch: 0 },
+    { name: "Front Right (FR)", az: 30, cat: "Floorstanding", ch: 1 },
+    { name: "Surround Left (SL)", az: -110, cat: "Bookshelf", ch: 3 },
+    { name: "Surround Right (SR)", az: 110, cat: "Bookshelf", ch: 4 },
+    { name: "Subwoofer (LFE)", az: 45, cat: "Subwoofer", ch: 5 },
   ];
 
   return {
@@ -145,7 +147,7 @@ export function create51Preset(project: BelugaProject): BelugaProject {
       const d = s.cat === "Subwoofer" ? 1.5 : dist;
       const h = s.cat === "Subwoofer" ? 0.2 : lp.z;
       const pos = relativeToWorldPos(lp, yaw, s.az, d, h);
-      return createSpeaker(s.name, pos, s.cat);
+      return createSpeaker(s.name, pos, s.cat, s.ch);
     }),
   };
 }
@@ -156,22 +158,22 @@ export function create714Preset(project: BelugaProject): BelugaProject {
   const yaw = listener.orientation.yaw;
   const dist = 2.5;
 
-  const earSpks: { name: string; az: number; cat: string }[] = [
-    { name: "Center (C)", az: 0, cat: "Bookshelf" },
-    { name: "Front Left (FL)", az: -30, cat: "Floorstanding" },
-    { name: "Front Right (FR)", az: 30, cat: "Floorstanding" },
-    { name: "Side Left (SL)", az: -90, cat: "Bookshelf" },
-    { name: "Side Right (SR)", az: 90, cat: "Bookshelf" },
-    { name: "Rear Left (RL)", az: -135, cat: "Bookshelf" },
-    { name: "Rear Right (RR)", az: 135, cat: "Bookshelf" },
-    { name: "Subwoofer (LFE)", az: 30, cat: "Subwoofer" },
+  const earSpks: { name: string; az: number; cat: string; ch: number }[] = [
+    { name: "Center (C)", az: 0, cat: "Bookshelf", ch: 2 },
+    { name: "Front Left (FL)", az: -30, cat: "Floorstanding", ch: 0 },
+    { name: "Front Right (FR)", az: 30, cat: "Floorstanding", ch: 1 },
+    { name: "Side Left (SL)", az: -90, cat: "Bookshelf", ch: 3 },
+    { name: "Side Right (SR)", az: 90, cat: "Bookshelf", ch: 4 },
+    { name: "Rear Left (RL)", az: -135, cat: "Bookshelf", ch: 5 },
+    { name: "Rear Right (RR)", az: 135, cat: "Bookshelf", ch: 6 },
+    { name: "Subwoofer (LFE)", az: 30, cat: "Subwoofer", ch: 7 },
   ];
 
-  const heightSpks: { name: string; az: number }[] = [
-    { name: "Top Front Left (TFL)", az: -45 },
-    { name: "Top Front Right (TFR)", az: 45 },
-    { name: "Top Rear Left (TRL)", az: -135 },
-    { name: "Top Rear Right (TRR)", az: 135 },
+  const heightSpks: { name: string; az: number; ch: number }[] = [
+    { name: "Top Front Left (TFL)", az: -45, ch: 8 },
+    { name: "Top Front Right (TFR)", az: 45, ch: 9 },
+    { name: "Top Rear Left (TRL)", az: -135, ch: 10 },
+    { name: "Top Rear Right (TRR)", az: 135, ch: 11 },
   ];
 
   const speakers: Speaker[] = [
@@ -179,11 +181,11 @@ export function create714Preset(project: BelugaProject): BelugaProject {
       const d = s.cat === "Subwoofer" ? 1.5 : dist;
       const h = s.cat === "Subwoofer" ? 0.2 : lp.z;
       const pos = relativeToWorldPos(lp, yaw, s.az, d, h);
-      return createSpeaker(s.name, pos, s.cat);
+      return createSpeaker(s.name, pos, s.cat, s.ch);
     }),
     ...heightSpks.map((s) => {
       const pos = relativeToWorldPos(lp, yaw, s.az, 1.8, lp.z + 1.2);
-      return createSpeaker(s.name, pos, "Ceiling");
+      return createSpeaker(s.name, pos, "Ceiling", s.ch);
     }),
   ];
 

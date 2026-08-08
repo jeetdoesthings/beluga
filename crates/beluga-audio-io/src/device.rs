@@ -6,6 +6,8 @@ use cpal::traits::DeviceTrait;
 use cpal::traits::HostTrait;
 use serde::{Deserialize, Serialize};
 
+use crate::engine::AudioEngine;
+
 /// A physical audio output device.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AudioDevice {
@@ -14,6 +16,80 @@ pub struct AudioDevice {
     pub is_default: bool,
     pub max_channels: u32,
     pub default_sample_rate: f64,
+    pub n_channels: u32, // actual channel count from default_output_config
+}
+
+/// What Beluga can do with a given channel count.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeviceCapabilities {
+    pub n_channels: u32,
+    pub can_stereo: bool,
+    pub can_surround: bool,
+    pub can_spatial: bool,
+    pub recommended_layout: &'static str,
+}
+
+impl DeviceCapabilities {
+    pub fn from_channels(n_channels: u32) -> Self {
+        match n_channels {
+            0 => DeviceCapabilities {
+                n_channels,
+                can_stereo: false,
+                can_surround: false,
+                can_spatial: false,
+                recommended_layout: "None",
+            },
+            1 => DeviceCapabilities {
+                n_channels,
+                can_stereo: false,
+                can_surround: false,
+                can_spatial: false,
+                recommended_layout: "Mono",
+            },
+            2 => DeviceCapabilities {
+                n_channels,
+                can_stereo: true,
+                can_surround: false,
+                can_spatial: true,
+                recommended_layout: "Stereo 2.0",
+            },
+            4 => DeviceCapabilities {
+                n_channels,
+                can_stereo: true,
+                can_surround: true,
+                can_spatial: true,
+                recommended_layout: "Surround 4.0",
+            },
+            6 => DeviceCapabilities {
+                n_channels,
+                can_stereo: true,
+                can_surround: true,
+                can_spatial: true,
+                recommended_layout: "Surround 5.1",
+            },
+            8 => DeviceCapabilities {
+                n_channels,
+                can_stereo: true,
+                can_surround: true,
+                can_spatial: true,
+                recommended_layout: "Surround 7.1",
+            },
+            _ if n_channels >= 8 => DeviceCapabilities {
+                n_channels,
+                can_stereo: true,
+                can_surround: true,
+                can_spatial: true,
+                recommended_layout: "Spatial",
+            },
+            _ => DeviceCapabilities {
+                n_channels,
+                can_stereo: true,
+                can_surround: false,
+                can_spatial: false,
+                recommended_layout: "Stereo 2.0",
+            },
+        }
+    }
 }
 
 /// Device enumeration helper.
@@ -43,6 +119,7 @@ impl DeviceEnumerator {
             is_default: true,
             max_channels: 2,
             default_sample_rate: 48000.0,
+            n_channels: 2,
         });
 
         if let Ok(devices_iter) = host.output_devices() {
@@ -68,6 +145,7 @@ impl DeviceEnumerator {
                     is_default,
                     max_channels,
                     default_sample_rate,
+                    n_channels: max_channels, // actual channels = max from default config
                 });
             }
         }
@@ -88,6 +166,7 @@ impl DeviceEnumerator {
             is_default: true,
             max_channels: config.channels() as u32,
             default_sample_rate: config.sample_rate().0 as f64,
+            n_channels: config.channels() as u32,
         })
     }
 
@@ -97,6 +176,90 @@ impl DeviceEnumerator {
             .into_iter()
             .find(|d| d.id == id)
             .ok_or_else(|| format!("Device '{}' not found", id))
+    }
+
+    /// Play a 440 Hz test tone on a single output channel for ~1.5 seconds.
+    /// All other channels remain silent. Blocking call.
+    pub fn play_channel_test_tone(device_id: &str, channel: u32) -> Result<(), String> {
+        use cpal::traits::StreamTrait;
+
+        let device = AudioEngine::open_device(device_id)?;
+        let config = device
+            .default_output_config()
+            .map_err(|e| format!("Device config error: {}", e))?;
+        let sample_rate = config.sample_rate().0;
+        let n_channels = config.channels() as usize;
+        let n_frames = (sample_rate as usize * 3 / 2).max(1); // 1.5 seconds
+
+        let ch = channel as usize;
+        if ch >= n_channels {
+            return Err(format!(
+                "Channel {} not available on device with {} channels",
+                ch, n_channels
+            ));
+        }
+
+        let mut interleaved = vec![0.0f32; n_frames * n_channels];
+        let freq = 440.0f64;
+        let amp = 0.3f32;
+        for i in 0..n_frames {
+            let t = (2.0 * std::f64::consts::PI * freq * i as f64 / sample_rate as f64).sin()
+                as f32
+                * amp;
+            interleaved[i * n_channels + ch] = t;
+        }
+
+        let stream_config = cpal::StreamConfig {
+            channels: config.channels(),
+            sample_rate: config.sample_rate(),
+            buffer_size: cpal::BufferSize::Default,
+        };
+
+        let source = std::sync::Arc::new(interleaved);
+        let playhead = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let total = source.len();
+
+        let src = std::sync::Arc::clone(&source);
+        let ph = std::sync::Arc::clone(&playhead);
+        let err_fn = |err: cpal::StreamError| {
+            eprintln!("[beluga-audio-io] test tone stream error: {}", err);
+        };
+
+        let stream = device
+            .build_output_stream::<f32, _, _>(
+                &stream_config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    let idx = ph.load(std::sync::atomic::Ordering::Relaxed);
+                    if idx >= total {
+                        for s in data.iter_mut() {
+                            *s = 0.0;
+                        }
+                        return;
+                    }
+                    let end = (idx + data.len()).min(total);
+                    data[..end - idx].copy_from_slice(&src[idx..end]);
+                    ph.store(end, std::sync::atomic::Ordering::Relaxed);
+                },
+                err_fn,
+                None,
+            )
+            .map_err(|e| format!("Failed to build test tone stream: {}", e))?;
+
+        stream
+            .play()
+            .map_err(|e| format!("Failed to play test tone: {}", e))?;
+
+        eprintln!(
+            "[beluga-audio-io] Playing channel {} test tone on {} ({}ch, {}Hz)",
+            ch,
+            device.name().unwrap_or_else(|_| "unknown".into()),
+            n_channels,
+            sample_rate
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(1700));
+        drop(stream);
+        Ok(())
     }
 }
 

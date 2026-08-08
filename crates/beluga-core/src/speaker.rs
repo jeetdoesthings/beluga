@@ -64,6 +64,8 @@ pub struct Speaker {
     pub position: Vector3,        // room-space meters
     pub orientation: Orientation, // yaw/pitch/roll degrees
     pub enabled: bool,
+    #[serde(default)]
+    pub channel: Option<u32>, // maps to physical output channel (None = unassigned)
 }
 
 impl Speaker {
@@ -75,6 +77,7 @@ impl Speaker {
             position,
             orientation: Orientation::default(),
             enabled: true,
+            channel: None,
         }
     }
 }

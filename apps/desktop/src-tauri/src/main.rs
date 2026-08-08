@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use beluga_audio_io::{
-    AudioDevice, AudioEngine, ChannelMapping, DeviceEnumerator, SourcePosition, Telemetry,
+    AudioDevice, AudioEngine, ChannelMapping, DeviceCapabilities, DeviceEnumerator, SourcePosition,
+    Telemetry,
 };
 use beluga_core::{BelugaProject, Listener, Orientation, Room, Speaker, Vector3};
 
@@ -57,6 +58,16 @@ fn enumerate_audio_devices() -> Result<Vec<AudioDevice>, String> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
+fn get_device_capabilities(n_channels: u32) -> DeviceCapabilities {
+    DeviceCapabilities::from_channels(n_channels)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn play_channel_test_tone(device_id: String, channel: u32) -> Result<(), String> {
+    DeviceEnumerator::play_channel_test_tone(&device_id, channel)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 fn start_playback(
     state: tauri::State<'_, Mutex<Option<StateEngine>>>,
     project_json: String,
@@ -69,20 +80,37 @@ fn start_playback(
 
     let project = json_to_project(&raw)?;
 
-    let n_speakers = project.speakers.len().max(1);
-
     // Open the requested CPAL device.
     let device = AudioEngine::open_device(&device_id)?;
 
     // Query device's actual channel count (not speaker count).
-    let n_channels = AudioEngine::device_channels(&device)?.max(2);
+    let n_channels = AudioEngine::device_channels(&device)?.max(2) as u32;
 
-    // Build channel mapping (speaker → output channel).
+    let n_speakers = project.speakers.len().max(1);
+
+    // Build channel mapping: use per-speaker `channel` field if set,
+    // fall back to explicit `channel_mapping` arg, then auto-assign.
     let mapping = if channel_mapping.is_empty() {
-        ChannelMapping::auto(n_speakers, n_channels as u32)
+        // Try per-speaker channel assignment from project JSON.
+        let explicit: Vec<usize> = project
+            .speakers
+            .iter()
+            .map(|s| s.channel.unwrap_or(0) as usize)
+            .collect();
+        // If ALL speakers have channel=None (value 0 fallback), use auto.
+        let has_explicit = project.speakers.iter().any(|s| s.channel.is_some());
+        if has_explicit && n_speakers <= n_channels as usize {
+            ChannelMapping {
+                n_output_channels: n_channels,
+                speaker_to_channel: explicit,
+                channel_to_speaker: vec![],
+            }
+        } else {
+            ChannelMapping::auto(n_speakers, n_channels)
+        }
     } else {
         ChannelMapping {
-            n_output_channels: n_channels as u32,
+            n_output_channels: n_channels,
             speaker_to_channel: channel_mapping,
             channel_to_speaker: vec![],
         }
@@ -273,6 +301,11 @@ fn speaker_from_json(json: &serde_json::Value) -> Result<Speaker, String> {
     if let Some(enabled) = json["enabled"].as_bool() {
         speaker.enabled = enabled;
     }
+    if let Some(ch) = json["channel"].as_u64() {
+        speaker.channel = Some(ch as u32);
+    } else if let Some(ch) = json["channel_index"].as_u64() {
+        speaker.channel = Some(ch as u32);
+    }
     Ok(speaker)
 }
 
@@ -288,6 +321,8 @@ fn main() {
             load_project,
             get_default_project_dir,
             enumerate_audio_devices,
+            get_device_capabilities,
+            play_channel_test_tone,
             start_playback,
             stop_playback,
             set_source_position,

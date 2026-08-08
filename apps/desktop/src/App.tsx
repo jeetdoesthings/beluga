@@ -22,7 +22,10 @@ import {
   stopPlayback,
   setSourcePosition,
   getTelemetry,
+  getDeviceCapabilities,
+  playChannelTestTone,
   type AudioDevice,
+  type DeviceCapabilities,
   type Telemetry,
 } from "./audio";
 
@@ -144,8 +147,10 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [confirmPreset, setConfirmPreset] = useState<{ name: string; fn: (p: BelugaProject) => BelugaProject } | null>(null);
   const speakerCounter = useRef(0);
-  const [audioDevices, setAudioDevices] = useState<import("./audio").AudioDevice[]>([]);
+  const [audioDevices, setAudioDevices] = useState<AudioDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<string>("");
+  const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(null);
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [telemetry, setTelemetry] = useState<import("./audio").Telemetry | null>(null);
   const [showAudioWindow, setShowAudioWindow] = useState(true);
@@ -156,6 +161,43 @@ export default function App() {
     setTimeout(() => {
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 2500);
+  };
+
+  // ─── Device capability detection ──────────────────────────────────────
+  const handleSelectDevice = (id: string) => {
+    setSelectedDevice(id);
+    const dev = audioDevices.find((d) => d.id === id);
+    if (dev && dev.n_channels > 0) {
+      getDeviceCapabilities(dev.n_channels).then(setDeviceCapabilities).catch(() => setDeviceCapabilities(null));
+    } else {
+      setDeviceCapabilities(null);
+    }
+  };
+
+  const handlePlayChannelTestTone = async (channel: number) => {
+    try {
+      const dev = audioDevices.find((d) => d.id === selectedDevice);
+      if (!dev) {
+        showToast("Select a device first");
+        return;
+      }
+      await playChannelTestTone(dev.id, channel);
+    } catch (e) {
+      showToast(`Test tone error: ${e}`);
+    }
+  };
+
+  const handleAssignSpeakerChannel = (speakerId: string | null, channel: number | null) => {
+    setProject((prev) => ({
+      ...prev,
+      speakers: prev.speakers.map((s) =>
+        s.id === speakerId
+          ? { ...s, channel: channel }
+          : speakerId === null
+            ? { ...s, channel: null }
+            : s
+      ),
+    }));
   };
 
   const syncSpeakerCounter = (speakers: Speaker[]) => {
@@ -254,8 +296,19 @@ export default function App() {
         const defaultDev = devices.find((d) => d.id === "default" || d.is_default);
         if (defaultDev) {
           setSelectedDevice(defaultDev.id);
+          if (defaultDev.n_channels > 0) {
+            getDeviceCapabilities(defaultDev.n_channels)
+              .then(setDeviceCapabilities)
+              .catch(() => setDeviceCapabilities(null));
+          }
         } else if (devices.length > 0) {
           setSelectedDevice(devices[0].id);
+          const dev = devices[0];
+          if (dev.n_channels > 0) {
+            getDeviceCapabilities(dev.n_channels)
+              .then(setDeviceCapabilities)
+              .catch(() => setDeviceCapabilities(null));
+          }
         }
       } catch (e) {
         console.error("Failed to enumerate audio devices:", e);
@@ -1210,7 +1263,8 @@ export default function App() {
         <AudioControls
           audioDevices={audioDevices}
           selectedDevice={selectedDevice}
-          onSelectDevice={setSelectedDevice}
+          onSelectDevice={handleSelectDevice}
+          deviceCapabilities={deviceCapabilities}
           isPlaying={isPlaying}
           telemetry={telemetry}
           onPlayPause={handlePlayPause}
@@ -1218,6 +1272,10 @@ export default function App() {
           onStop={handleStopPlayback}
           onSourcePosChange={handleSourcePositionChange}
           onApplyPreset={applyPreset}
+          onPlayChannelTestTone={handlePlayChannelTestTone}
+          onAssignSpeakerChannel={handleAssignSpeakerChannel}
+          onSelectSpeaker={setSelectedSpeakerId}
+          selectedSpeakerId={selectedSpeakerId}
           project={project}
           onClose={() => setShowAudioWindow(false)}
         />

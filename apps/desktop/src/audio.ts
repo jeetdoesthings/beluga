@@ -9,6 +9,15 @@ export interface AudioDevice {
   is_default: boolean;
   max_channels: number;
   default_sample_rate: number;
+  n_channels: number;
+}
+
+export interface DeviceCapabilities {
+  n_channels: number;
+  can_stereo: boolean;
+  can_surround: boolean;
+  can_spatial: boolean;
+  recommended_layout: string;
 }
 
 export interface Telemetry {
@@ -30,6 +39,26 @@ export interface SourcePosition {
 /** Enumerate available audio output devices via CPAL. */
 export async function enumerateAudioDevices(): Promise<AudioDevice[]> {
   return (await invoke("enumerate_audio_devices")) as AudioDevice[];
+}
+
+/** Query what Beluga can do with a device that has n output channels. */
+export async function getDeviceCapabilities(
+  nChannels: number,
+): Promise<DeviceCapabilities> {
+  return (await invoke("get_device_capabilities", {
+    n_channels: nChannels,
+  })) as DeviceCapabilities;
+}
+
+/** Play a 440 Hz test tone on a single output channel (blocking ~1.5s). */
+export async function playChannelTestTone(
+  deviceId: string,
+  channel: number,
+): Promise<void> {
+  await invoke("play_channel_test_tone", {
+    device_id: deviceId,
+    channel: channel,
+  });
 }
 
 /** Start playback with the given project, device, and channel mapping. */
