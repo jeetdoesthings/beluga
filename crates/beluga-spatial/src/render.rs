@@ -96,6 +96,22 @@ impl RealTimeRenderer {
         super::vbap::render_vbap_2d(&self.speaker_azimuths, source_az)
     }
 
+    /// Update speaker azimuths/distances in real-time (e.g. when the user
+    /// drags a speaker in the 3D viewport while audio is playing).
+    pub fn update_speaker_positions(&mut self, azimuths: Vec<f64>, distances: Vec<f64>) {
+        if azimuths.len() != distances.len() {
+            return;
+        }
+        self.speaker_azimuths = azimuths;
+        self.speaker_distances = distances.clone();
+        // Recompute delays from new distances.
+        let delays_sec = compute_delays(&distances);
+        self.delays = delays_sec
+            .iter()
+            .map(|&d| d * self.sample_rate as f64)
+            .collect();
+    }
+
     /// Render one audio block into `output` (per-speaker interleaved:
     /// speaker 0 block, speaker 1 block, ... of `n_frames` each).
     ///

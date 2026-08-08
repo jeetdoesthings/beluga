@@ -48,7 +48,6 @@ interface AudioControlsProps {
   deviceCapabilities: DeviceCapabilities | null;
   isPlaying: boolean;
   telemetry: Telemetry | null;
-  onPlayPause: () => void;
   onStart: () => void;
   onStop: () => void;
   onSourcePosChange: (field: "azimuth" | "elevation" | "distance", value: number) => void;
@@ -68,7 +67,6 @@ export function AudioControls({
   deviceCapabilities,
   isPlaying,
   telemetry,
-  onPlayPause,
   onStart,
   onStop,
   onSourcePosChange,
@@ -244,20 +242,16 @@ export function AudioControls({
       )}
 
       {/* ─── Playback Controls ─── */}
-      <div className="btn-grid-2" style={{ marginTop: 8 }}>
+      <div className="btn-grid-1" style={{ marginTop: 8 }}>
         {!isPlaying ? (
           <button className="action-btn primary" onClick={onStart}>
             <Icons.Play /> Start Playback
           </button>
         ) : (
-          <button className="action-btn" onClick={onStop}>
-            <Icons.Stop /> Stop
+          <button className="action-btn danger" onClick={onStop}>
+            <Icons.Stop /> Stop Playback
           </button>
         )}
-        <button className="action-btn" onClick={onPlayPause}>
-          {isPlaying ? <Icons.Stop /> : <Icons.Play />}
-          {isPlaying ? " Pause" : " Play"}
-        </button>
       </div>
 
       {/* ─── Telemetry ─── */}

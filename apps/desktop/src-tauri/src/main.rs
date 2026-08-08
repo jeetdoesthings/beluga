@@ -174,7 +174,20 @@ fn set_source_position(
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
+fn set_speaker_positions(
+    state: tauri::State<'_, Mutex<Option<StateEngine>>>,
+    azimuths: Vec<f64>,
+    distances: Vec<f64>,
+) -> Result<(), String> {
+    let guard = state.lock().unwrap();
+    if let Some(engine) = guard.as_ref() {
+        engine.0.set_speaker_positions(azimuths, distances)?;
+    }
+    Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
 fn get_telemetry(state: tauri::State<'_, Mutex<Option<StateEngine>>>) -> Result<Telemetry, String> {
     let guard = state.lock().unwrap();
     if let Some(engine) = guard.as_ref() {
@@ -326,6 +339,7 @@ fn main() {
             start_playback,
             stop_playback,
             set_source_position,
+            set_speaker_positions,
             get_telemetry,
             set_playing,
         ])

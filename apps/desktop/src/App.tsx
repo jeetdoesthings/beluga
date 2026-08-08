@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BelugaScene, CameraView, SceneUpdate } from "./three/BelugaScene";
+import { toListenerRelative } from "./vbap";
 import {
   BelugaProject,
   createDefaultProject,
@@ -21,6 +22,7 @@ import {
   startPlayback,
   stopPlayback,
   setSourcePosition,
+  setSpeakerPositions,
   getTelemetry,
   getDeviceCapabilities,
   playChannelTestTone,
@@ -152,6 +154,10 @@ export default function App() {
   const [deviceCapabilities, setDeviceCapabilities] = useState<DeviceCapabilities | null>(null);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const isPlayingRef = useRef(false);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
   const [telemetry, setTelemetry] = useState<import("./audio").Telemetry | null>(null);
   const [showAudioWindow, setShowAudioWindow] = useState(true);
   const telemetryInterval = useRef<number | null>(null);
@@ -228,6 +234,28 @@ export default function App() {
           speakers: prev.speakers.map((s) => (s.id === id ? { ...s, position: pos, orientation: orient } : s)),
         };
         if (sceneRef.current) sceneRef.current.project = updated;
+
+        // Send updated speaker positions to the audio engine in real-time
+        // (only when playing, to avoid unnecessary IPC during setup).
+        if (isPlayingRef.current) {
+          const listener = updated.listeners[0];
+          if (listener) {
+            const azimuths: number[] = [];
+            const distances: number[] = [];
+            for (const sp of updated.speakers) {
+              if (!sp.enabled) continue;
+              const sph = toListenerRelative(
+                sp.position,
+                listener.position,
+                listener.orientation,
+              );
+              azimuths.push(sph.azimuth);
+              distances.push(sph.distance);
+            }
+            void setSpeakerPositions(azimuths, distances);
+          }
+        }
+
         return updated;
       });
     };
@@ -358,32 +386,6 @@ export default function App() {
       showToast("Playback stopped");
     } catch (e) {
       showToast(`Stop failed: ${e}`);
-    }
-  };
-
-  const handlePlayPause = async () => {
-    try {
-      if (isPlaying) {
-        await stopPlayback();
-        if (telemetryInterval.current) {
-          clearInterval(telemetryInterval.current);
-          telemetryInterval.current = null;
-        }
-        setIsPlaying(false);
-        setTelemetry(null);
-      } else {
-        await startPlayback(project, selectedDevice);
-        setIsPlaying(true);
-        telemetryInterval.current = window.setInterval(async () => {
-          try {
-            setTelemetry(await getTelemetry());
-          } catch (e) {
-            console.error("Telemetry error:", e);
-          }
-        }, 100);
-      }
-    } catch (e) {
-      showToast(`Audio error: ${e}`);
     }
   };
 
@@ -1267,7 +1269,6 @@ export default function App() {
           deviceCapabilities={deviceCapabilities}
           isPlaying={isPlaying}
           telemetry={telemetry}
-          onPlayPause={handlePlayPause}
           onStart={handleStartPlayback}
           onStop={handleStopPlayback}
           onSourcePosChange={handleSourcePositionChange}

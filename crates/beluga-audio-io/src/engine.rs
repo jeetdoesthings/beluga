@@ -202,6 +202,18 @@ impl AudioEngine {
             .map_err(|e| format!("Failed to send position: {}", e))
     }
 
+    /// Update speaker positions in the renderer (non-blocking, thread-safe).
+    /// Called when the user drags a speaker in the 3D viewport.
+    pub fn set_speaker_positions(
+        &self,
+        azimuths: Vec<f64>,
+        distances: Vec<f64>,
+    ) -> Result<(), String> {
+        let mut r = self.shared.renderer.lock().unwrap();
+        r.update_speaker_positions(azimuths, distances);
+        Ok(())
+    }
+
     pub fn set_playing(&self, playing: bool) {
         self.shared.playing.store(playing, Ordering::Relaxed);
     }

@@ -97,6 +97,17 @@ export async function setSourcePosition(pos: SourcePosition): Promise<void> {
   });
 }
 
+/** Update speaker positions in the renderer (real-time drag updates). */
+export async function setSpeakerPositions(
+  azimuths: number[],
+  distances: number[],
+): Promise<void> {
+  await invoke("set_speaker_positions", {
+    azimuths: azimuths,
+    distances: distances,
+  });
+}
+
 /** Toggle playing state without releasing the stream. */
 export async function setPlaying(playing: boolean): Promise<void> {
   await invoke("set_playing", { playing });
