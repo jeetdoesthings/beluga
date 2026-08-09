@@ -217,6 +217,20 @@ fn set_playing(
     Ok(())
 }
 
+/// Level matching: get per-speaker RMS levels from the last rendered output.
+/// Returns None if no engine is running.
+#[tauri::command(rename_all = "snake_case")]
+fn get_level_match(
+    state: tauri::State<'_, Mutex<Option<StateEngine>>>,
+) -> Result<Option<Vec<f64>>, String> {
+    let guard = state.lock().unwrap();
+    if let Some(engine) = guard.as_ref() {
+        Ok(engine.0.level_match())
+    } else {
+        Ok(None)
+    }
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Project JSON conversion helpers
 // ────────────────────────────────────────────────────────────────────────────
@@ -342,6 +356,7 @@ fn main() {
             set_speaker_positions,
             get_telemetry,
             set_playing,
+            get_level_match,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

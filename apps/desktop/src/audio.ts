@@ -117,3 +117,8 @@ export async function setPlaying(playing: boolean): Promise<void> {
 export async function getTelemetry(): Promise<Telemetry> {
   return (await invoke("get_telemetry")) as Telemetry;
 }
+
+/** Get per-speaker RMS levels for level matching. */
+export async function getLevelMatch(): Promise<number[] | null> {
+  return (await invoke("get_level_match")) as number[] | null;
+}

@@ -57,6 +57,8 @@ struct SharedState {
     sample_rate: u32,
     n_channels: u32,
     start_time: Arc<Mutex<Option<Instant>>>,
+    /// Last output block for level matching measurements.
+    last_output: Arc<Mutex<Vec<f32>>>,
 }
 
 pub struct AudioEngine {
@@ -95,6 +97,7 @@ impl AudioEngine {
             sample_rate,
             n_channels,
             start_time: Arc::new(Mutex::new(None)),
+            last_output: Arc::new(Mutex::new(Vec::new())),
         };
 
         Ok(AudioEngine {
@@ -146,6 +149,7 @@ impl AudioEngine {
         let renderer = Arc::clone(&self.shared.renderer);
         let mapping = self.shared.mapping.clone();
         let start_time = Arc::clone(&self.shared.start_time);
+        let last_output = Arc::clone(&self.shared.last_output);
 
         let err_fn = |err: cpal::StreamError| {
             eprintln!("[beluga-audio-io] stream error: {}", err);
@@ -169,6 +173,7 @@ impl AudioEngine {
                         sample_rate,
                         n_channels,
                         &start_time,
+                        &last_output,
                     );
                 },
                 err_fn,
@@ -232,6 +237,28 @@ impl AudioEngine {
 
     pub fn n_speakers(&self) -> usize {
         self.shared.renderer.lock().unwrap().n_speakers()
+    }
+
+    /// Compute RMS levels for each speaker from the last output block.
+    /// Returns None if no audio has been rendered yet.
+    pub fn level_match(&self) -> Option<Vec<f64>> {
+        let output = self.shared.last_output.lock().unwrap();
+        if output.is_empty() {
+            return None;
+        }
+        let n_speakers = self.shared.mapping.n_output_channels as usize;
+        let n_frames = output.len() / n_speakers;
+        if n_frames == 0 {
+            return None;
+        }
+
+        let mut rms = Vec::with_capacity(n_speakers);
+        for si in 0..n_speakers {
+            let ch: Vec<f32> = output[si * n_frames..(si + 1) * n_frames].to_vec();
+            let sum_sq: f64 = ch.iter().map(|s| *s as f64 * *s as f64).sum();
+            rms.push((sum_sq / n_frames as f64).sqrt());
+        }
+        Some(rms)
     }
 
     pub fn telemetry(&self) -> Telemetry {
@@ -318,6 +345,7 @@ fn audio_callback(
     _sample_rate: u32,
     n_channels: u32,
     _start_time: &Arc<Mutex<Option<Instant>>>,
+    last_output: &Arc<Mutex<Vec<f32>>>,
 ) {
     let n_frames = output.len() / n_channels as usize;
     if n_frames == 0 {
@@ -408,6 +436,10 @@ fn audio_callback(
 
     // 7. Update playhead.
     playhead.store(end, Ordering::Relaxed);
+
+    // 8. Store output for level matching (non-blocking, replace in-place).
+    let mut lo = last_output.lock().unwrap();
+    *lo = output.to_vec();
 }
 
 #[cfg(test)]
