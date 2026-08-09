@@ -266,12 +266,17 @@ impl AudioEngine {
 
     /// Compute RMS levels for each speaker from the last output block.
     /// Returns None if no audio has been rendered yet.
+    /// The stored output is in per-speaker layout: [spk0_block, spk1_block, ...]
+    /// where each block is n_frames of f32 samples.
     pub fn level_match(&self) -> Option<Vec<f64>> {
         let output = self.shared.last_output.lock().unwrap();
         if output.is_empty() {
             return None;
         }
-        let n_speakers = self.shared.mapping.n_output_channels as usize;
+        let n_speakers = self.shared.mapping.speaker_to_channel.len();
+        if n_speakers == 0 {
+            return None;
+        }
         let n_frames = output.len() / n_speakers;
         if n_frames == 0 {
             return None;
@@ -279,7 +284,7 @@ impl AudioEngine {
 
         let mut rms = Vec::with_capacity(n_speakers);
         for si in 0..n_speakers {
-            let ch: Vec<f32> = output[si * n_frames..(si + 1) * n_frames].to_vec();
+            let ch = &output[si * n_frames..(si + 1) * n_frames];
             let sum_sq: f64 = ch.iter().map(|s| *s as f64 * *s as f64).sum();
             rms.push((sum_sq / n_frames as f64).sqrt());
         }
@@ -481,9 +486,10 @@ fn audio_callback(
     // 7. Update playhead.
     playhead.store(end, Ordering::Relaxed);
 
-    // 8. Store output for level matching (non-blocking, replace in-place).
+    // 8. Store per-speaker output for level matching (non-blocking, replace in-place).
+    //    speaker_output is in per-speaker layout: [spk0_block, spk1_block, ...]
     let mut lo = last_output.lock().unwrap();
-    *lo = output.to_vec();
+    *lo = speaker_output.clone();
 }
 
 #[cfg(test)]
