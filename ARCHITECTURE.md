@@ -117,8 +117,11 @@ Beluga is built incrementally. Each milestone has a clear goal and acceptance cr
 - `beluga-spatial`: `SpatialScene`/`SpatialObject`, `RealTimeRenderer` with real-time VBAP gain computation and per-block rendering
 - `beluga-room`: `BoundingBox3`, `RoomGeometry` with floor/ceiling dimensions and model bounds
 - `beluga-audio-io`: `DeviceEnumerator` (CPAL device enumeration), `ChannelMapping` (speaker→channel assignment), `AudioEngine` (real-time CPAL output stream with non-blocking callback)
-- Tauri backend integration: `enumerate_audio_devices`, `start_playback`, `stop_playback`, `set_source_position`, `get_telemetry`, `set_playing` commands
-- Frontend: `audio.ts` Tauri bridge, `AudioControls` component with device selector, transport, source position sliders, and live telemetry
+- Tauri backend integration: `enumerate_audio_devices`, `start_playback`, `stop_playback`, `set_source_position`, `get_telemetry`, `set_playing`, `set_speaker_positions`, `get_device_capabilities`, `play_channel_test_tone` commands
+- Frontend: `audio.ts` Tauri bridge, `AudioControls` component with device selector, transport, source position sliders, live telemetry, device capabilities display, channel calibration UI
+- Channel calibration UI: "Play Test" buttons per output channel, endpoint-to-channel mapping selector
+- Real-time speaker panning: `set_speaker_positions` command updates VBAP azimuths when speakers are dragged in 3D viewport while playing
+- Device-centric endpoint model: `n_channels` in `AudioDevice`, `channel: Option<u32>` in `Speaker`, explicit channel assignment from presets
 
 **Acceptance criteria (spec §42–§47):**
 - Audio device enumeration via CPAL ✅
@@ -128,8 +131,11 @@ Beluga is built incrementally. Each milestone has a clear goal and acceptance cr
 - Soft limiting prevents clipping ✅
 - Channel mapping wizard (auto + custom) ✅
 - Frontend audio controls (device, transport, position, telemetry) ✅
+- Device capabilities display (stereo/surround/spatial detection) ✅
+- Channel calibration UI (Play Test per channel, endpoint mapping) ✅
+- Real-time speaker position updates during playback ✅
 - All crates compile with `cargo clippy -D warnings` ✅
-- All tests pass: 73 Rust tests, 90 Python tests ✅
+- All tests pass: 89 Rust tests (73 core + 16 integration), 90 Python tests ✅
 - `cargo fmt --check` clean ✅
 - Frontend TypeScript compiles clean, Vite build succeeds ✅
 
