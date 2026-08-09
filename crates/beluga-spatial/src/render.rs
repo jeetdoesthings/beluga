@@ -17,13 +17,13 @@ pub struct RealTimeRenderer {
     /// Pre-computed listener-relative azimuths (degrees) for each enabled speaker.
     speaker_azimuths: Vec<f64>,
     /// Per-speaker listener-relative distances (meters), for delay alignment.
-    #[allow(dead_code)]
     speaker_distances: Vec<f64>,
     n_speakers: usize,
     pub sample_rate: u32,
     prev_gains: Vec<f32>,
     delay_lines: Vec<FractionalDelay>,
-    delays: Vec<f64>, // samples per speaker
+    /// Delay in samples for each speaker (farthest = 0 delay reference).
+    pub delays: Vec<f64>,
     smoothing: SmoothingConfig,
 }
 
@@ -257,5 +257,69 @@ mod tests {
 
         let max_val = output.iter().cloned().fold(0.0_f32, f32::max);
         assert!(max_val > 0.0, "expected non-zero output from sine");
+    }
+
+    #[test]
+    fn delay_alignment_applied_correctly() {
+        // Verify delay computation works - speakers at same distance have zero delay.
+        // This is the key invariant: farther speakers get 0 delay (reference), closer speakers get positive delays.
+        let sr = 48000u32;
+
+        // Test: speakers at same distance
+        let mut proj_same = BelugaProject::new("Same Distances");
+        proj_same.room = Room::new("Room", 10.0, 5.0, 3.0);
+        proj_same
+            .listeners
+            .push(Listener::new("L1", "Main", Vector3::new(0.0, 0.0, 1.1)));
+        proj_same.active_listener_id = Some("L1".to_string());
+        proj_same.speakers.push(Speaker::new(
+            "S1",
+            "S",
+            "Bookshelf",
+            Vector3::new(0.0, 2.0, 0.0),
+        ));
+        proj_same.speakers.push(Speaker::new(
+            "S2",
+            "S",
+            "Bookshelf",
+            Vector3::new(0.0, 2.0, 0.0),
+        ));
+
+        let r_same = RealTimeRenderer::new(&proj_same, sr);
+        assert!(
+            r_same.delays[0].abs() < 1e-6,
+            "Same distance speakers should have 0 delay"
+        );
+        assert!(
+            r_same.delays[1].abs() < 1e-6,
+            "Same distance speakers should have 0 delay"
+        );
+    }
+
+    #[test]
+    fn update_speaker_positions_recomputes_delays() {
+        let mut proj = make_test_project();
+        let sr = 48000u32;
+        let mut r = RealTimeRenderer::new(&proj, sr);
+
+        // Move speakers (simulating drag) - closer distances
+        let new_azimuths = vec![-30.0_f64, 30.0_f64];
+        let new_distances = vec![1.0_f64, 1.0_f64]; // Both at same distance now
+
+        r.update_speaker_positions(new_azimuths.clone(), new_distances);
+
+        // Both should now have 0 delay since same distance
+        assert!(r.delays[0].abs() < 1e-6, "Distance 1 should have 0 delay");
+        assert!(r.delays[1].abs() < 1e-6, "Distance 1 should have 0 delay");
+
+        // Different distances
+        let new_distances2 = vec![2.0_f64, 4.0_f64];
+        r.update_speaker_positions(new_azimuths, new_distances2);
+
+        let expected = (4.0 - 2.0) / 343.0 * sr as f64;
+        assert!(
+            (r.delays[0] - expected).abs() < 1.0,
+            "Delay should update when speaker moves"
+        );
     }
 }
