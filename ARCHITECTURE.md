@@ -56,7 +56,7 @@ Beluga is built incrementally. Each milestone has a clear goal and acceptance cr
 | 0.1 | Prove the mathematics | Python research implementation: listener coordinates, 2D VBAP, offline WAV export, tests | ✅ **Complete** |
 | 0.2 | Build the visual world | Tauri + React + Three.js: room viewer, speaker/listener placement, listener view | ✅ **Complete** |
 | 0.3 | Make sound physical | Rust real-time renderer, CPAL device enumeration, real-time VBAP, endpoint mapping, audio controls UI | ✅ **Complete** |
-| 0.4 | Geometry calibration | Distance/delay alignment, level matching, capability analysis | ⚠️ **In Progress** (Phase 2/3) |
+| 0.4 | Geometry calibration | Distance/delay alignment, level matching, capability analysis | ✅ **Complete** |
 | 0.5 | Music playback | WAV/FLAC stereo pipeline, Faithful Mode | ⬜ Not started |
 | 0.6 | Measure reality | Mic input, calibration sweep, impulse response, parametric EQ | ⬜ Not started |
 | 0.7 | Consumer-quality setup | Wizards, project bundles, polished UX | ⬜ Not started |
@@ -138,6 +138,18 @@ Beluga is built incrementally. Each milestone has a clear goal and acceptance cr
 - All tests pass: 89 Rust tests (73 core + 16 integration), 90 Python tests ✅
 - `cargo fmt --check` clean ✅
 - Frontend TypeScript compiles clean, Vite build succeeds ✅
+
+### 0.4 — Geometry calibration (complete)
+
+**Goal:** Calibrate speaker geometry and levels for accurate spatial reproduction.
+
+**What was built:**
+- **Delay alignment** — geometric time-of-flight compensation via `compute_delays()` and `FractionalDelay` ring buffer, applied per audio block in `render_block()`. Delays recompute dynamically when speakers are dragged.
+- **Level matching** — `level_match()` method captures last output block and computes per-speaker RMS. "Measure Levels" button + per-speaker gain sliders (0.5x–2.0x) allow calibration.
+- **Swept sine measurement** — `play_swept_sine()` command plays 20Hz–20kHz exponential sweep on a single channel for acoustic analysis.
+- **Delay visualization** — `speaker_delays_ms` added to Telemetry, displayed in the audio controls.
+- **Per-speaker cal gains** — `speaker_cal_gains` field applied in the audio callback before headroom/limiter.
+- **Tests** — Added `delay_alignment_applied_correctly` and `update_speaker_positions_recomputes_delays` tests verifying delay computation and dynamic updates.
 
 ---
 
