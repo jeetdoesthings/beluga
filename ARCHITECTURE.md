@@ -56,7 +56,7 @@ Beluga is built incrementally. Each milestone has a clear goal and acceptance cr
 | 0.1 | Prove the mathematics | Python research implementation: listener coordinates, 2D VBAP, offline WAV export, tests | ✅ **Complete** |
 | 0.2 | Build the visual world | Tauri + React + Three.js: room viewer, speaker/listener placement, listener view | ✅ **Complete** |
 | 0.3 | Make sound physical | Rust real-time renderer, CPAL device enumeration, real-time VBAP, endpoint mapping, audio controls UI | ✅ **Complete** |
-| 0.4 | Geometry calibration | Distance/delay alignment, level matching, capability analysis | ⬜ Not started |
+| 0.4 | Geometry calibration | Distance/delay alignment, level matching, capability analysis | ⚠️ **In Progress** (Phase 2/3) |
 | 0.5 | Music playback | WAV/FLAC stereo pipeline, Faithful Mode | ⬜ Not started |
 | 0.6 | Measure reality | Mic input, calibration sweep, impulse response, parametric EQ | ⬜ Not started |
 | 0.7 | Consumer-quality setup | Wizards, project bundles, polished UX | ⬜ Not started |
