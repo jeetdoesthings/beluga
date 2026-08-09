@@ -22,6 +22,7 @@ export interface DeviceCapabilities {
 
 export interface Telemetry {
   speaker_gains: number[];
+  speaker_delays_ms: number[];
   playhead_samples: number;
   playing: boolean;
   source_len: number;

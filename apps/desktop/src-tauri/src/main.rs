@@ -195,6 +195,7 @@ fn get_telemetry(state: tauri::State<'_, Mutex<Option<StateEngine>>>) -> Result<
     } else {
         Ok(Telemetry {
             speaker_gains: vec![],
+            speaker_delays_ms: vec![],
             playhead_samples: 0,
             playing: false,
             source_len: 0,

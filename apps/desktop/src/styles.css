@@ -504,6 +504,35 @@ body {
   cursor: pointer;
 }
 
+/* ─── Level Matching ─── */
+.level-match-display {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.level-match-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.level-match-value {
+  font-size: 11px;
+  color: #cbd5e1;
+  font-family: monospace;
+}
+
+.level-match-placeholder {
+  font-size: 11px;
+  color: #6474a4;
+  margin-top: 6px;
+  textAlign: center;
+}
+
 .action-btn.small {
   padding: 2px 8px;
   font-size: 11px;

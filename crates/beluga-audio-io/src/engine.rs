@@ -36,6 +36,7 @@ impl Default for SourcePosition {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Telemetry {
     pub speaker_gains: Vec<f32>,
+    pub speaker_delays_ms: Vec<f64>,
     pub playhead_samples: usize,
     pub playing: bool,
     pub source_len: usize,
@@ -267,6 +268,15 @@ impl AudioEngine {
         let playing = self.shared.playing.load(Ordering::Relaxed);
         let sl = self.shared.source_len.load(Ordering::Relaxed);
 
+        // Get delay info from renderer.
+        let delays_ms = {
+            let r = self.shared.renderer.lock().unwrap();
+            r.delays
+                .iter()
+                .map(|d| d / r.sample_rate as f64 * 1000.0)
+                .collect::<Vec<f64>>()
+        };
+
         let elapsed_ms = {
             let st = self.shared.start_time.lock().unwrap();
             if let Some(t) = st.as_ref() {
@@ -282,6 +292,7 @@ impl AudioEngine {
 
         Telemetry {
             speaker_gains: gains.clone(),
+            speaker_delays_ms: delays_ms,
             playhead_samples: ph,
             playing,
             source_len: sl,

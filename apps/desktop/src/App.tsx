@@ -26,6 +26,7 @@ import {
   getTelemetry,
   getDeviceCapabilities,
   playChannelTestTone,
+  getLevelMatch,
   type AudioDevice,
   type DeviceCapabilities,
   type Telemetry,
@@ -160,6 +161,7 @@ export default function App() {
   }, [isPlaying]);
   const [telemetry, setTelemetry] = useState<import("./audio").Telemetry | null>(null);
   const [showAudioWindow, setShowAudioWindow] = useState(true);
+  const [levelMatchLevels, setLevelMatchLevels] = useState<number[] | null>(null);
   const telemetryInterval = useRef<number | null>(null);
 
   const showToast = (msg: string) => {
@@ -204,6 +206,17 @@ export default function App() {
             : s
       ),
     }));
+  };
+
+  const handleGetLevelMatch = async (): Promise<number[] | null> => {
+    try {
+      const levels = await getLevelMatch();
+      setLevelMatchLevels(levels);
+      return levels;
+    } catch (e) {
+      showToast(`Level match error: ${e}`);
+      return null;
+    }
   };
 
   const syncSpeakerCounter = (speakers: Speaker[]) => {
@@ -1279,6 +1292,8 @@ export default function App() {
           selectedSpeakerId={selectedSpeakerId}
           project={project}
           onClose={() => setShowAudioWindow(false)}
+          onGetLevelMatch={handleGetLevelMatch}
+          levelMatchLevels={levelMatchLevels}
         />
       )}
 

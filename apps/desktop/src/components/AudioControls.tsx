@@ -58,6 +58,8 @@ interface AudioControlsProps {
   selectedSpeakerId: string | null;
   project: BelugaProject;
   onClose: () => void;
+  onGetLevelMatch: () => Promise<number[] | null>;
+  levelMatchLevels: number[] | null;
 }
 
 export function AudioControls({
@@ -77,6 +79,8 @@ export function AudioControls({
   selectedSpeakerId,
   project,
   onClose,
+  onGetLevelMatch,
+  levelMatchLevels,
 }: AudioControlsProps) {
   const selectedDev = audioDevices.find((d) => d.id === selectedDevice);
   const nDeviceChannels = selectedDev?.n_channels ?? 0;
@@ -91,6 +95,11 @@ export function AudioControls({
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const formatDb = (linear: number) => {
+    if (linear <= 0.0) return "-∞ dB";
+    return `${(20.0 * Math.log10(linear)).toFixed(1)} dB`;
   };
 
   return (
@@ -281,8 +290,67 @@ export function AudioControls({
                 : "—"}
             </span>
           </div>
+          <div className="slider-header">
+            <span className="section-label">Delays</span>
+            <span className="slider-readout">
+              {telemetry.speaker_delays_ms.length > 0
+                ? `[${telemetry.speaker_delays_ms
+                    .map((d) => `${d.toFixed(1)}ms`)
+                    .join(", ")}]`
+                : "—"}
+            </span>
+          </div>
         </div>
       )}
+
+      {/* ─── Level Matching ─── */}
+      <div className="field-section">
+        <div className="slider-header" style={{ marginBottom: 6 }}>
+          <span className="section-label">Level Matching</span>
+        </div>
+        <button
+          className="action-btn"
+          onClick={() => {
+            void onGetLevelMatch();
+          }}
+          style={{ padding: "4px 8px", fontSize: 11, width: "100%" }}
+          disabled={!isPlaying}
+        >
+          Measure Levels
+        </button>
+
+        {levelMatchLevels && (
+          <div className="level-match-display">
+            {project.speakers.map((sp, i) => {
+              const rms = levelMatchLevels[i] ?? 0;
+              return (
+                <div key={sp.id} className="level-match-row">
+                  <span
+                    className="mapping-speaker-name"
+                    style={{
+                      cursor: "pointer",
+                      fontWeight: selectedSpeakerId === sp.id ? 600 : 400,
+                      color: selectedSpeakerId === sp.id ? "var(--accent-blue)" : "inherit",
+                    }}
+                    onClick={() => onSelectSpeaker(sp.id)}
+                  >
+                    {sp.name}
+                  </span>
+                  <span className="level-match-value">
+                    {formatDb(rms)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!levelMatchLevels && (
+          <div className="level-match-placeholder">
+            Click "Measure Levels" while playing to check relative levels.
+          </div>
+        )}
+      </div>
 
       {/* ─── Source Position ─── */}
       <div className="field-section">

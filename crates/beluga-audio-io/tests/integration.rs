@@ -99,6 +99,7 @@ fn telemetry_defaults_when_no_engine() {
     // well-formed and serializes.
     let tel = Telemetry {
         speaker_gains: vec![],
+        speaker_delays_ms: vec![],
         playhead_samples: 0,
         playing: false,
         source_len: 0,
