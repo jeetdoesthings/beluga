@@ -27,6 +27,7 @@ import {
   getDeviceCapabilities,
   playChannelTestTone,
   playSweptSine,
+  loadAudioBytes,
   getLevelMatch,
   setSpeakerCalGain,
   type AudioDevice,
@@ -165,6 +166,10 @@ export default function App() {
   const [showAudioWindow, setShowAudioWindow] = useState(true);
   const [levelMatchLevels, setLevelMatchLevels] = useState<number[] | null>(null);
   const [speakerCalGains, setSpeakerCalGains] = useState<number[] | null>(null);
+  const [selectedAudioFile, setSelectedAudioFile] = useState<string | null>(null);
+  const [pendingAudioBytes, setPendingAudioBytes] = useState<{ name: string; bytes: number[] } | null>(null);
+  const [faithfulMode, setFaithfulMode] = useState(false);
+  const [stereoWidth, setStereoWidth] = useState(60); // degrees
   const telemetryInterval = useRef<number | null>(null);
 
   const showToast = (msg: string) => {
@@ -246,6 +251,33 @@ export default function App() {
     } catch (e) {
       showToast(`Cal gain error: ${e}`);
     }
+  };
+
+  const handleLoadAudioFile = async () => {
+    try {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".wav";
+      input.onchange = async (e) => {
+        const target = e.target as HTMLInputElement;
+        if (target.files && target.files.length > 0) {
+          const file = target.files[0];
+          const arrayBuffer = await file.arrayBuffer();
+          const bytes = Array.from(new Uint8Array(arrayBuffer));
+          setSelectedAudioFile(file.name);
+          setPendingAudioBytes({ name: file.name, bytes });
+          showToast(`Selected: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+        }
+      };
+      input.click();
+    } catch (e) {
+      showToast(`File selection failed: ${e}`);
+    }
+  };
+
+  const handleToggleFaithfulMode = () => {
+    setFaithfulMode((prev) => !prev);
+    showToast(`Faithful Mode: ${!faithfulMode ? "enabled" : "disabled"}`);
   };
 
   const syncSpeakerCounter = (speakers: Speaker[]) => {
@@ -402,7 +434,21 @@ export default function App() {
     try {
       await startPlayback(project, selectedDevice);
       setIsPlaying(true);
-      showToast("Playback started");
+
+      // If an audio file was selected, load it into the running engine
+      if (pendingAudioBytes) {
+        try {
+          const result = await loadAudioBytes(pendingAudioBytes.name, pendingAudioBytes.bytes);
+          setPendingAudioBytes(null);
+          showToast(result);
+        } catch (e) {
+          showToast(`Failed to load audio: ${e}`);
+        }
+      } else if (selectedAudioFile) {
+        showToast(`Playback started with audio file: ${selectedAudioFile}`);
+      } else {
+        showToast("Playback started (test tone)");
+      }
       telemetryInterval.current = window.setInterval(async () => {
         try {
           const tel = await getTelemetry();
@@ -1326,6 +1372,12 @@ export default function App() {
           levelMatchLevels={levelMatchLevels}
           speakerCalGains={speakerCalGains}
           onSetSpeakerCalGain={handleSetSpeakerCalGain}
+          onSelectAudioFile={handleLoadAudioFile}
+          selectedAudioFile={selectedAudioFile}
+          faithfulMode={faithfulMode}
+          stereoWidth={stereoWidth}
+          onToggleFaithfulMode={handleToggleFaithfulMode}
+          onStereoWidthChange={setStereoWidth}
         />
       )}
 

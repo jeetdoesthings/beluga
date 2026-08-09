@@ -73,11 +73,30 @@ fn play_swept_sine(device_id: String, channel: u32) -> Result<(), String> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
+fn load_audio_bytes(
+    state: tauri::State<'_, Mutex<Option<StateEngine>>>,
+    file_name: String,
+    bytes: Vec<u8>,
+) -> Result<String, String> {
+    let mut guard = state.lock().unwrap();
+    if let Some(ref mut engine) = *guard {
+        engine
+            .0
+            .load_wav_bytes(&file_name, &bytes)
+            .map_err(|e| format!("Failed to load audio: {}", e))?;
+        Ok(format!("Loaded {} ({} bytes)", file_name, bytes.len()))
+    } else {
+        Err("No audio engine running. Start playback first.".to_string())
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
 fn start_playback(
     state: tauri::State<'_, Mutex<Option<StateEngine>>>,
     project_json: String,
     device_id: String,
     channel_mapping: Vec<usize>,
+    audio_file: Option<String>,
 ) -> Result<String, String> {
     // Parse project JSON into a BelugaProject.
     let raw: serde_json::Value =
@@ -123,22 +142,31 @@ fn start_playback(
 
     let mut engine = AudioEngine::new(&project, device, mapping)?;
 
-    // Generate a test tone (440 Hz sine, 3 seconds) so there's audio to play.
+    // Load audio file or generate test tone as fallback.
     let sample_rate = engine.sample_rate();
-    let tone_samples = (sample_rate as usize * 3).max(1);
-    let mut tone = vec![0.0f32; tone_samples];
-    let freq = 440.0f64;
-    for (i, sample) in tone.iter_mut().enumerate() {
-        *sample =
-            (2.0 * std::f64::consts::PI * freq * i as f64 / sample_rate as f64).sin() as f32 * 0.3;
+    if let Some(ref path) = audio_file {
+        engine
+            .load_wav_file(path)
+            .map_err(|e| format!("Failed to load audio: {}", e))?;
+        eprintln!("[beluga] Loaded audio file: {}", path);
+    } else {
+        // Generate a test tone (440 Hz sine, 3 seconds) so there's audio to play.
+        let tone_samples = (sample_rate as usize * 3).max(1);
+        let mut tone = vec![0.0f32; tone_samples];
+        let freq = 440.0f64;
+        for (i, sample) in tone.iter_mut().enumerate() {
+            *sample = (2.0 * std::f64::consts::PI * freq * i as f64 / sample_rate as f64).sin()
+                as f32
+                * 0.3;
+        }
+        engine.load_source(&tone, sample_rate);
+        eprintln!(
+            "[beluga] Loaded test tone: {} samples at {} Hz, {}",
+            tone_samples,
+            sample_rate,
+            engine.n_speakers()
+        );
     }
-    engine.load_source(&tone, sample_rate);
-    eprintln!(
-        "[beluga] Loaded test tone: {} samples at {} Hz, {}",
-        tone_samples,
-        sample_rate,
-        engine.n_speakers()
-    );
 
     engine.start()?;
     eprintln!(
@@ -370,6 +398,7 @@ fn main() {
             get_device_capabilities,
             play_channel_test_tone,
             play_swept_sine,
+            load_audio_bytes,
             start_playback,
             stop_playback,
             set_source_position,

@@ -150,3 +150,22 @@ class TestEndToEnd:
             for p in paths:
                 data, _ = sf.read(p, dtype="float32")
                 assert len(data) >= len(samples)
+
+    def test_stereo_wav_averaged_to_mono(self, tmp_path):
+        """Stereo WAV input should be averaged to mono and load the same length."""
+        sr = 48000
+        n = 4800
+        left = (0.5 * np.sin(2 * np.pi * 220 * np.linspace(0, 0.1, n, endpoint=False))).astype(np.float32)
+        right = (0.5 * np.sin(2 * np.pi * 330 * np.linspace(0, 0.1, n, endpoint=False))).astype(np.float32)
+        stereo_data = np.stack([left, right], axis=1)
+        wav_path = tmp_path / "stereo.wav"
+        sf.write(str(wav_path), stereo_data, sr, subtype="FLOAT")
+
+        loaded, loaded_sr = load_mono_wav(wav_path)
+        assert loaded_sr == sr
+        assert len(loaded) == n  # Same sample count, averaged to mono
+        assert loaded.dtype == np.float32
+
+        # Verify the averaged result
+        expected = ((left + right) / 2.0).astype(np.float32)
+        np.testing.assert_allclose(loaded, expected, atol=1e-6)

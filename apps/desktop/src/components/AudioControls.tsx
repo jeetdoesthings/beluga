@@ -63,6 +63,12 @@ interface AudioControlsProps {
   levelMatchLevels: number[] | null;
   speakerCalGains: number[] | null;
   onSetSpeakerCalGain: (index: number, gain: number) => void;
+  onSelectAudioFile: () => Promise<void>;
+  selectedAudioFile: string | null;
+  faithfulMode: boolean;
+  stereoWidth: number;
+  onToggleFaithfulMode: () => void;
+  onStereoWidthChange: (value: number) => void;
 }
 
 export function AudioControls({
@@ -87,6 +93,12 @@ export function AudioControls({
   levelMatchLevels,
   speakerCalGains,
   onSetSpeakerCalGain,
+  onSelectAudioFile,
+  selectedAudioFile,
+  faithfulMode,
+  stereoWidth,
+  onToggleFaithfulMode,
+  onStereoWidthChange,
 }: AudioControlsProps) {
   const selectedDev = audioDevices.find((d) => d.id === selectedDevice);
   const nDeviceChannels = selectedDev?.n_channels ?? 0;
@@ -255,6 +267,69 @@ export function AudioControls({
           </div>
         </div>
       )}
+
+      {/* ─── Audio File ─── */}
+      <div className="field-section">
+        <div className="slider-header" style={{ marginBottom: 6 }}>
+          <span className="section-label">Source File</span>
+          <button
+            className="action-btn small"
+            onClick={() => { void onSelectAudioFile(); }}
+            title="Select a WAV file to play"
+            style={{ padding: "2px 6px", fontSize: 10, height: 20 }}
+          >
+            Choose File
+          </button>
+        </div>
+        {selectedAudioFile ? (
+          <div style={{ fontSize: 10, color: "var(--text-secondary)", wordBreak: "break-all" }}>
+            {selectedAudioFile}
+          </div>
+        ) : (
+          <div style={{ fontSize: 10, color: "var(--text-secondary)", opacity: 0.6 }}>
+            No file selected — will play test tone
+          </div>
+        )}
+      </div>
+
+      {/* ─── Faithful Mode ─── */}
+      <div className="field-section">
+        <div className="slider-header" style={{ marginBottom: 6 }}>
+          <span className="section-label">Faithful Mode</span>
+          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10 }}>
+            <input
+              type="checkbox"
+              checked={faithfulMode}
+              onChange={() => { onToggleFaithfulMode(); }}
+              title="Render stereo as virtual sources (left/right at ±width/2)"
+            />
+            {faithfulMode ? "On" : "Off"}
+          </label>
+        </div>
+        {faithfulMode && (
+          <div className="slider-header">
+            <span className="section-label">Stage Width</span>
+            <span className="slider-readout">{stereoWidth}°</span>
+          </div>
+        )}
+        {faithfulMode && (
+          <SnapSlider
+            value={stereoWidth}
+            min={20}
+            max={180}
+            step={2}
+            snapPoints={[{ value: 60, label: "60°" }, { value: 90, label: "90°" }, { value: 120, label: "120°" }, { value: 180, label: "180°" }]}
+            onChange={onStereoWidthChange}
+          />
+        )}
+        <div style={{ fontSize: 9, color: "var(--text-secondary)", marginTop: 4 }}>
+          {faithfulMode
+            ? "Stereo source rendered as two virtual speakers at ±" +
+              (stereoWidth / 2).toFixed(0) +
+              "°"
+            : "Mono VBAP panning to all speakers"}
+        </div>
+      </div>
 
       {/* ─── Playback Controls ─── */}
       <div className="btn-grid-1" style={{ marginTop: 8 }}>

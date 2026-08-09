@@ -78,21 +78,27 @@ export async function startPlayback(
   project: BelugaProject,
   deviceId: string,
   channelMapping: number[] = [],
+  audioFile?: string,
 ): Promise<string> {
   const projectJson = JSON.stringify(project);
   if (!projectJson || projectJson === "undefined") {
     throw new Error("Project is empty or undefined — cannot serialize");
   }
+  const opts: Record<string, unknown> = {
+    project_json: projectJson,
+    device_id: deviceId,
+    channel_mapping: channelMapping,
+  };
+  if (audioFile !== undefined) {
+    opts.audio_file = audioFile;
+  }
   console.log("[beluga/audio] invoke start_playback with:", {
     device_id: deviceId,
     project_json_len: projectJson.length,
     channel_mapping: channelMapping,
+    audio_file: audioFile ?? null,
   });
-  return (await invoke("start_playback", {
-    project_json: projectJson,
-    device_id: deviceId,
-    channel_mapping: channelMapping,
-  })) as string;
+  return (await invoke("start_playback", opts)) as string;
 }
 
 /** Stop the current playback and release the audio engine. */
@@ -144,4 +150,15 @@ export async function setSpeakerCalGain(
     speaker_index: speakerIndex,
     gain: gain,
   });
+}
+
+/** Load a WAV file from bytes (via frontend file picker). */
+export async function loadAudioBytes(
+  fileName: string,
+  bytes: number[],
+): Promise<string> {
+  return (await invoke("load_audio_bytes", {
+    file_name: fileName,
+    bytes,
+  })) as string;
 }

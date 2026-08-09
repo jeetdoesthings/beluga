@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "beluga-research"
-version = "0.3.0"
+version = "0.5.0"
 description = "Beluga 0.3 — Python research implementation with real-time Rust audio engine bridge. Proves core spatial-audio mathematics (VBAP, listener-relative geometry) with native playback via CPAL."
 requires-python = ">=3.10"
 dependencies = [

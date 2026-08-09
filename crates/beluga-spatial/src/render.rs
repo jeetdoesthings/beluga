@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn update_speaker_positions_recomputes_delays() {
-        let mut proj = make_test_project();
+        let proj = make_test_project();
         let sr = 48000u32;
         let mut r = RealTimeRenderer::new(&proj, sr);
 

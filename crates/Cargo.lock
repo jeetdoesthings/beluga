@@ -32,19 +32,20 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "beluga-audio-io"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "beluga-core",
  "beluga-dsp",
  "beluga-spatial",
  "cpal",
+ "hound",
  "serde",
  "serde_json",
 ]
 
 [[package]]
 name = "beluga-core"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -52,11 +53,11 @@ dependencies = [
 
 [[package]]
 name = "beluga-dsp"
-version = "0.3.0"
+version = "0.5.0"
 
 [[package]]
 name = "beluga-room"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "beluga-core",
  "serde",
@@ -65,7 +66,7 @@ dependencies = [
 
 [[package]]
 name = "beluga-spatial"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "beluga-core",
  "beluga-dsp",
@@ -208,6 +209,12 @@ name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+
+[[package]]
+name = "hound"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
 
 [[package]]
 name = "indexmap"

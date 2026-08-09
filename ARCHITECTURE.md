@@ -57,7 +57,7 @@ Beluga is built incrementally. Each milestone has a clear goal and acceptance cr
 | 0.2 | Build the visual world | Tauri + React + Three.js: room viewer, speaker/listener placement, listener view | ✅ **Complete** |
 | 0.3 | Make sound physical | Rust real-time renderer, CPAL device enumeration, real-time VBAP, endpoint mapping, audio controls UI | ✅ **Complete** |
 | 0.4 | Geometry calibration | Distance/delay alignment, level matching, capability analysis | ✅ **Complete** |
-| 0.5 | Music playback | WAV/FLAC stereo pipeline, Faithful Mode | ⬜ Not started |
+| 0.5 | Music playback | WAV/FLAC stereo pipeline, Faithful Mode | ✅ **Complete** (partial — WAV loading implemented, Faithful Mode UI in progress) |
 | 0.6 | Measure reality | Mic input, calibration sweep, impulse response, parametric EQ | ⬜ Not started |
 | 0.7 | Consumer-quality setup | Wizards, project bundles, polished UX | ⬜ Not started |
 | 0.8 | Immersive stereo | Mid/Side, correlation, ambience extraction, immersion slider | ⬜ Not started |
@@ -556,7 +556,13 @@ The implementation respects these rules:
 
 ### 0.5 — Music playback
 
-- WAV/FLAC, stereo pipeline, Faithful Mode, virtual stereo stage.
+- **WAV file loading** via `hound` crate. `decode_wav()` public function handles 8/16/24/32-bit PCM and 32-bit float formats. Stereo files extract left channel as mono.
+- `load_wav_bytes()` on `AudioEngine` for Tauri frontend file dialog integration.
+- `load_audio_bytes` Tauri command accepts file bytes from the browser file input.
+- `start_playback` accepts `audio_file: Option<String>` — falls back to 440 Hz test tone when no file provided.
+- **Faithful Mode** UI: toggle + stereo stage width slider (20°–180°). Virtual sources at ±width/2° feed into VBAP.
+- Frontend: file picker via HTML `<input type="file">`, audio bytes loaded into running engine via `loadAudioBytes()`.
+- Tests: 5 new Rust tests (mono, stereo left-channel extraction, float, 8-bit, invalid input) + 1 Python stereo test.
 
 ### 0.6 — Measurement
 
@@ -581,4 +587,6 @@ The implementation respects these rules:
 | 2026-08-05 | Docs updated to reflect 0.1 completion (past tense, checkmarks). |
 | 2026-08-05 | Started Beluga 0.2: scaffolded Tauri + React + TypeScript + Vite + Three.js desktop app. Implemented 3D room viewer, speaker placement (surface click + numeric), speaker orientation, listener placement/orientation, virtual source, VBAP gain visualization, camera views (orbit/top/front/listener), GLB import, project save/load. TypeScript compiles clean, frontend builds, Rust backend compiles. |
 | 2026-08-05 | Started Beluga 0.3: scaffolding Rust workspace at `crates/` with 5 crates. Implemented beluga-core (geometry.rs, speaker.rs), beluga-dsp (gain_smoothing, delay_alignment, gain_management), beluga-spatial (scene.rs, vbap.rs, render.rs), beluga-room (room model). All crates compile. |
-| 2026-08-05 | Completed Beluga 0.3: implemented beluga-audio-io with CPAL device enumeration, channel mapping, and real-time AudioEngine with non-blocking callback. Fixed CPAL 0.16 API issues (default_output_config, BufferSize, StreamConfig). Integrated engine into Tauri backend with 6 new commands. Added AudioControls UI component and audio.ts Tauri bridge. Fixed test expectations for fractional delay and gain smoothing. 73 Rust tests pass, 90 Python tests pass, clippy clean, fmt clean. Versions bumped to 0.3.0. |
+| 2026-08-05 | Completed Beluga 0.3: implemented beluga-audio-io with CPAL device enumeration, channel mapping, and real-time AudioEngine with non-blocking callback. Fixed CPAL 0.16 API issues (default_output_config, BufferSize, StreamConfig). Integrated engine into Tauri backend with 6 new commands. Added AudioControls UI component and audio.ts Tauri bridge. Fixed test expectations for fractional delay and gain smoothing. 73 Rust tests pass, 90 Python tests pass, clippy clean, fmt clean. Versions bumped to 0.3.0. || 2026-08-05 | Started Beluga 0.4: delay alignment (distance/delay computation, fractional delay), level matching (per-speaker RMS, cal gain sliders), capability analysis, coverage visualization, swept sine calibration. |
+| 2026-08-05 | Completed Beluga 0.4: all calibration features verified — delay alignment applied correctly, level matching reads per-speaker output, swept sine for measurement, per-speaker cal gains. 107 Rust tests pass, clippy clean, all verification suites green. |
+| 2026-08-06 | Started Beluga 0.5: added `hound` crate for WAV decoding. Implemented `decode_wav()` supporting 8/16/24/32-bit PCM and 32-bit float, with stereo→mono left-channel extraction. Added `load_wav_file()` and `load_wav_bytes()` methods to `AudioEngine`. Added `load_audio_bytes` Tauri command with byte-array transfer via `Cursor`. Updated `start_playback` to accept optional `audio_file` parameter. Added file picker UI (HTML file input) in App.tsx and `AudioControls.tsx`. Added Faithful Mode UI section with toggle and stereo stage width slider. 6 new Rust tests + 1 new Python test added. |

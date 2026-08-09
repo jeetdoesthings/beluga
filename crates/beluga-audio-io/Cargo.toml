@@ -1,10 +1,11 @@
 [package]
 name = "beluga-audio-io"
-version = "0.3.0"
+version = "0.5.0"
 edition = "2021"
 
 [dependencies]
 cpal = "0.16"
+hound = "3.5"
 beluga-core = { path = "../beluga-core" }
 beluga-dsp = { path = "../beluga-dsp" }
 beluga-spatial = { path = "../beluga-spatial" }

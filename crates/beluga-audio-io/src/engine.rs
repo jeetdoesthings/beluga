@@ -13,6 +13,77 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use beluga_core::BelugaProject;
 use beluga_dsp::process_output;
 use beluga_spatial::RealTimeRenderer;
+use std::io::Cursor;
+
+/// Decode WAV bytes into mono f32 samples and sample rate.
+///
+/// Supports 8/16/24/32-bit PCM and 32-bit float formats.
+/// For stereo files, the left channel is extracted.
+pub fn decode_wav(bytes: &[u8]) -> Result<(Vec<f32>, u32), String> {
+    let mut reader = hound::WavReader::<Cursor<Vec<u8>>>::new(Cursor::new(bytes.to_vec()))
+        .map_err(|e| format!("Failed to parse WAV: {}", e))?;
+
+    let spec = reader.spec();
+    let sample_rate = spec.sample_rate;
+    let n_channels = spec.channels as usize;
+    let bits_per_sample = spec.bits_per_sample;
+
+    let mut samples: Vec<f32> = Vec::new();
+
+    match spec.sample_format {
+        hound::SampleFormat::Float => {
+            for s in reader.samples::<f32>() {
+                let s = s.map_err(|e| e.to_string())?;
+                samples.push(s);
+            }
+        }
+        hound::SampleFormat::Int => match bits_per_sample {
+            8 => {
+                for s in reader.samples::<i8>() {
+                    let s = s.map_err(|e| e.to_string())?;
+                    samples.push(s as f32 / 128.0);
+                }
+            }
+            16 => {
+                for s in reader.samples::<i16>() {
+                    let s = s.map_err(|e| e.to_string())?;
+                    samples.push(s as f32 / 32768.0);
+                }
+            }
+            24 => {
+                for s in reader.samples::<i32>() {
+                    let s = s.map_err(|e| e.to_string())?;
+                    samples.push(s as f32 / 8388608.0);
+                }
+            }
+            32 => {
+                for s in reader.samples::<i32>() {
+                    let s = s.map_err(|e| e.to_string())?;
+                    samples.push(s as f32 / 2147483648.0);
+                }
+            }
+            _ => {
+                return Err(format!("Unsupported bit depth: {}", bits_per_sample));
+            }
+        },
+    }
+
+    // For stereo files, samples are interleaved; extract left channel
+    let mono_samples: Vec<f32> = if n_channels > 1 {
+        samples.iter().step_by(n_channels).copied().collect()
+    } else {
+        samples
+    };
+
+    eprintln!(
+        "[beluga-audio-io] Decoded WAV: {}ch, {}Hz, {} mono samples",
+        n_channels,
+        sample_rate,
+        mono_samples.len()
+    );
+
+    Ok((mono_samples, sample_rate))
+}
 
 use crate::mapping::ChannelMapping;
 
@@ -124,6 +195,38 @@ impl AudioEngine {
             let mut r = self.shared.renderer.lock().unwrap();
             r.sample_rate = sample_rate;
         }
+    }
+
+    /// Load a WAV file as the source audio (mono extraction from stereo).
+    pub fn load_wav_file(&mut self, path: &str) -> Result<(), String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("Failed to read WAV file: {}", e))?;
+        let (mono_samples, sample_rate) = decode_wav(&bytes)?;
+        eprintln!(
+            "[beluga-audio-io] Loaded WAV: {} mono samples at {} Hz from {}",
+            mono_samples.len(),
+            sample_rate,
+            path
+        );
+        self.load_source(&mono_samples, sample_rate);
+        Ok(())
+    }
+
+    /// Load a WAV file from raw bytes (for Tauri file dialog integration).
+    pub fn load_wav_bytes(&mut self, file_name: &str, bytes: &[u8]) -> Result<(), String> {
+        let (mono_samples, sample_rate) = decode_wav(bytes)?;
+        eprintln!(
+            "[beluga-audio-io] Loaded WAV (from bytes): {} mono samples at {} Hz from {}",
+            mono_samples.len(),
+            sample_rate,
+            file_name
+        );
+        self.load_source(&mono_samples, sample_rate);
+        Ok(())
+    }
+
+    /// Get the number of samples in the currently loaded source.
+    pub fn source_len(&self) -> usize {
+        self.shared.source_len.load(Ordering::Relaxed)
     }
 
     pub fn start(&mut self) -> Result<(), String> {
