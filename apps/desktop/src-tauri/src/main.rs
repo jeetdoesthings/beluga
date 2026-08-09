@@ -68,6 +68,11 @@ fn play_channel_test_tone(device_id: String, channel: u32) -> Result<(), String>
 }
 
 #[tauri::command(rename_all = "snake_case")]
+fn play_swept_sine(device_id: String, channel: u32) -> Result<(), String> {
+    DeviceEnumerator::play_swept_sine(&device_id, channel)
+}
+
+#[tauri::command(rename_all = "snake_case")]
 fn start_playback(
     state: tauri::State<'_, Mutex<Option<StateEngine>>>,
     project_json: String,
@@ -232,6 +237,19 @@ fn get_level_match(
     }
 }
 
+#[tauri::command(rename_all = "snake_case")]
+fn set_speaker_cal_gain(
+    state: tauri::State<'_, Mutex<Option<StateEngine>>>,
+    speaker_index: usize,
+    gain: f32,
+) -> Result<(), String> {
+    let guard = state.lock().unwrap();
+    if let Some(engine) = guard.as_ref() {
+        engine.0.set_speaker_cal_gain(speaker_index, gain)?;
+    }
+    Ok(())
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Project JSON conversion helpers
 // ────────────────────────────────────────────────────────────────────────────
@@ -351,12 +369,15 @@ fn main() {
             enumerate_audio_devices,
             get_device_capabilities,
             play_channel_test_tone,
+            play_swept_sine,
             start_playback,
             stop_playback,
             set_source_position,
             set_speaker_positions,
             get_telemetry,
             set_playing,
+            get_level_match,
+            set_speaker_cal_gain,
             get_level_match,
         ])
         .run(tauri::generate_context!())

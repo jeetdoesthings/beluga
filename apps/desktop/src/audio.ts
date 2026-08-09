@@ -62,6 +62,17 @@ export async function playChannelTestTone(
   });
 }
 
+/** Play a swept sine (20Hz-20kHz, 5s) on a single output channel for measurement. */
+export async function playSweptSine(
+  deviceId: string,
+  channel: number,
+): Promise<void> {
+  await invoke("play_swept_sine", {
+    device_id: deviceId,
+    channel: channel,
+  });
+}
+
 /** Start playback with the given project, device, and channel mapping. */
 export async function startPlayback(
   project: BelugaProject,
@@ -122,4 +133,15 @@ export async function getTelemetry(): Promise<Telemetry> {
 /** Get per-speaker RMS levels for level matching. */
 export async function getLevelMatch(): Promise<number[] | null> {
   return (await invoke("get_level_match")) as number[] | null;
+}
+
+/** Set per-speaker calibration gain (for level matching). */
+export async function setSpeakerCalGain(
+  speakerIndex: number,
+  gain: number,
+): Promise<void> {
+  await invoke("set_speaker_cal_gain", {
+    speaker_index: speakerIndex,
+    gain: gain,
+  });
 }

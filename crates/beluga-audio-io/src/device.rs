@@ -261,6 +261,98 @@ impl DeviceEnumerator {
         drop(stream);
         Ok(())
     }
+
+    /// Play a swept sine (20Hz-20kHz, 5 seconds) on a single output channel.
+    /// Used for measurement and calibration. All other channels remain silent.
+    /// Blocking call.
+    pub fn play_swept_sine(device_id: &str, channel: u32) -> Result<(), String> {
+        use cpal::traits::StreamTrait;
+
+        let device = AudioEngine::open_device(device_id)?;
+        let config = device
+            .default_output_config()
+            .map_err(|e| format!("Device config error: {}", e))?;
+        let sample_rate = config.sample_rate().0;
+        let n_channels = config.channels() as usize;
+        let duration_sec = 5.0;
+        let n_frames = (sample_rate as f64 * duration_sec).ceil() as usize;
+
+        let ch = channel as usize;
+        if ch >= n_channels {
+            return Err(format!(
+                "Channel {} not available on device with {} channels",
+                ch, n_channels
+            ));
+        }
+
+        let mut interleaved = vec![0.0f32; n_frames * n_channels];
+        let f_start = 20.0f64;
+        let f_end = 20000.0f64;
+        let amp = 0.5f32;
+        // Exponential frequency sweep
+        let k = (f_end / f_start).ln();
+        for i in 0..n_frames {
+            let t = i as f64 / sample_rate as f64;
+            let freq = f_start * (k * t / duration_sec).exp();
+            let phase = 2.0 * std::f64::consts::PI * freq * t;
+            let sample = phase.sin() as f32 * amp;
+            interleaved[i * n_channels + ch] = sample;
+        }
+
+        let stream_config = cpal::StreamConfig {
+            channels: config.channels(),
+            sample_rate: config.sample_rate(),
+            buffer_size: cpal::BufferSize::Default,
+        };
+
+        let source = std::sync::Arc::new(interleaved);
+        let playhead = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let total = source.len();
+
+        let src = std::sync::Arc::clone(&source);
+        let ph = std::sync::Arc::clone(&playhead);
+        let err_fn = |err: cpal::StreamError| {
+            eprintln!("[beluga-audio-io] swept sine stream error: {}", err);
+        };
+
+        let stream = device
+            .build_output_stream::<f32, _, _>(
+                &stream_config,
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    let idx = ph.load(std::sync::atomic::Ordering::Relaxed);
+                    if idx >= total {
+                        for s in data.iter_mut() {
+                            *s = 0.0;
+                        }
+                        return;
+                    }
+                    let end = (idx + data.len()).min(total);
+                    data[..end - idx].copy_from_slice(&src[idx..end]);
+                    ph.store(end, std::sync::atomic::Ordering::Relaxed);
+                },
+                err_fn,
+                None,
+            )
+            .map_err(|e| format!("Failed to build swept sine stream: {}", e))?;
+
+        stream
+            .play()
+            .map_err(|e| format!("Failed to play swept sine: {}", e))?;
+
+        eprintln!(
+            "[beluga-audio-io] Playing swept sine on channel {} ({}, {}ch, {}Hz)",
+            ch,
+            device.name().unwrap_or_else(|_| "unknown".into()),
+            n_channels,
+            sample_rate
+        );
+
+        std::thread::sleep(std::time::Duration::from_millis(
+            (duration_sec * 1000.0 + 200.0) as u64,
+        ));
+        drop(stream);
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------

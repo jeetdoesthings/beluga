@@ -53,6 +53,8 @@ struct SharedState {
     playhead: Arc<AtomicUsize>,
     playing: Arc<AtomicBool>,
     speaker_gains: Arc<Mutex<Vec<f32>>>,
+    /// Per-speaker calibration gain multipliers (default: 1.0).
+    speaker_cal_gains: Arc<Mutex<Vec<f32>>>,
     renderer: Arc<Mutex<RealTimeRenderer>>,
     mapping: ChannelMapping,
     sample_rate: u32,
@@ -93,6 +95,7 @@ impl AudioEngine {
             playhead: Arc::new(AtomicUsize::new(0)),
             playing: Arc::new(AtomicBool::new(false)),
             speaker_gains: Arc::new(Mutex::new(vec![0.0; n_speakers])),
+            speaker_cal_gains: Arc::new(Mutex::new(vec![1.0; n_speakers])),
             renderer: Arc::new(Mutex::new(renderer)),
             mapping,
             sample_rate,
@@ -147,6 +150,7 @@ impl AudioEngine {
         let playhead = Arc::clone(&self.shared.playhead);
         let playing = Arc::clone(&self.shared.playing);
         let speaker_gains = Arc::clone(&self.shared.speaker_gains);
+        let speaker_cal_gains = Arc::clone(&self.shared.speaker_cal_gains);
         let renderer = Arc::clone(&self.shared.renderer);
         let mapping = self.shared.mapping.clone();
         let start_time = Arc::clone(&self.shared.start_time);
@@ -168,6 +172,7 @@ impl AudioEngine {
                         &playhead,
                         &playing,
                         &speaker_gains,
+                        &speaker_cal_gains,
                         &renderer,
                         &mapping,
                         &rx,
@@ -218,6 +223,25 @@ impl AudioEngine {
         let mut r = self.shared.renderer.lock().unwrap();
         r.update_speaker_positions(azimuths, distances);
         Ok(())
+    }
+
+    /// Set a per-speaker calibration gain (for level matching).
+    pub fn set_speaker_cal_gain(&self, speaker_index: usize, gain: f32) -> Result<(), String> {
+        let mut cal = self.shared.speaker_cal_gains.lock().unwrap();
+        if speaker_index >= cal.len() {
+            return Err(format!(
+                "Speaker index {} out of range ({} speakers)",
+                speaker_index,
+                cal.len()
+            ));
+        }
+        cal[speaker_index] = gain;
+        Ok(())
+    }
+
+    /// Get the current per-speaker calibration gains.
+    pub fn speaker_cal_gains(&self) -> Vec<f32> {
+        self.shared.speaker_cal_gains.lock().unwrap().clone()
     }
 
     pub fn set_playing(&self, playing: bool) {
@@ -350,6 +374,7 @@ fn audio_callback(
     playhead: &Arc<AtomicUsize>,
     playing: &Arc<AtomicBool>,
     speaker_gains: &Arc<Mutex<Vec<f32>>>,
+    speaker_cal_gains: &Arc<Mutex<Vec<f32>>>,
     renderer: &Arc<Mutex<RealTimeRenderer>>,
     mapping: &ChannelMapping,
     source_pos_rx: &mpsc::Receiver<SourcePosition>,
@@ -425,11 +450,19 @@ fn audio_callback(
         r.render_block(&block_buf[..n_frames], &gains, 1.0, &mut speaker_output);
     }
 
-    // 5. Apply output processing (headroom + soft limiter) per speaker.
-    for si in 0..n_speakers {
-        let ch = &mut speaker_output[si * n_frames..(si + 1) * n_frames];
+    // 5. Apply output processing (headroom + soft limiter) per speaker,
+    //    including per-speaker calibration gains for level matching.
+    let cal_gains = speaker_cal_gains.lock().unwrap();
+    for (si, ch) in speaker_output.chunks_mut(n_frames).enumerate() {
+        if si < cal_gains.len() {
+            let cal = cal_gains[si];
+            for s in ch.iter_mut() {
+                *s *= cal;
+            }
+        }
         process_output(ch, -1.0, 0.99);
     }
+    drop(cal_gains);
 
     // 6. Interleave per-speaker output into CPAL output buffer using mapping.
     for s in output.iter_mut() {

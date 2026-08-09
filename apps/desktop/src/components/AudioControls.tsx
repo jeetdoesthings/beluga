@@ -53,6 +53,7 @@ interface AudioControlsProps {
   onSourcePosChange: (field: "azimuth" | "elevation" | "distance", value: number) => void;
   onApplyPreset: (fn: (p: BelugaProject) => BelugaProject, name: string) => void;
   onPlayChannelTestTone: (channel: number) => Promise<void>;
+  onPlaySweptSine: (channel: number) => Promise<void>;
   onAssignSpeakerChannel: (speakerId: string | null, channel: number | null) => void;
   onSelectSpeaker: (id: string | null) => void;
   selectedSpeakerId: string | null;
@@ -60,6 +61,8 @@ interface AudioControlsProps {
   onClose: () => void;
   onGetLevelMatch: () => Promise<number[] | null>;
   levelMatchLevels: number[] | null;
+  speakerCalGains: number[] | null;
+  onSetSpeakerCalGain: (index: number, gain: number) => void;
 }
 
 export function AudioControls({
@@ -74,6 +77,7 @@ export function AudioControls({
   onSourcePosChange,
   onApplyPreset,
   onPlayChannelTestTone,
+  onPlaySweptSine,
   onAssignSpeakerChannel,
   onSelectSpeaker,
   selectedSpeakerId,
@@ -81,6 +85,8 @@ export function AudioControls({
   onClose,
   onGetLevelMatch,
   levelMatchLevels,
+  speakerCalGains,
+  onSetSpeakerCalGain,
 }: AudioControlsProps) {
   const selectedDev = audioDevices.find((d) => d.id === selectedDevice);
   const nDeviceChannels = selectedDev?.n_channels ?? 0;
@@ -323,6 +329,7 @@ export function AudioControls({
           <div className="level-match-display">
             {project.speakers.map((sp, i) => {
               const rms = levelMatchLevels[i] ?? 0;
+              const calGain = speakerCalGains?.[i] ?? 1.0;
               return (
                 <div key={sp.id} className="level-match-row">
                   <span
@@ -339,6 +346,19 @@ export function AudioControls({
                   <span className="level-match-value">
                     {formatDb(rms)}
                   </span>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={2.0}
+                    step={0.01}
+                    value={calGain}
+                    onChange={(e) => onSetSpeakerCalGain(i, parseFloat(e.target.value))}
+                    style={{ width: 80 }}
+                    title={`Adjust ${sp.name} level`}
+                  />
+                  <span className="level-match-value" style={{ width: 40, textAlign: "right" }}>
+                    {calGain.toFixed(2)}x
+                  </span>
                 </div>
               );
             })}
@@ -350,6 +370,17 @@ export function AudioControls({
             Click "Measure Levels" while playing to check relative levels.
           </div>
         )}
+
+        {/* Channel sweep for individual calibration */}
+        <button
+          className="action-btn small"
+          onClick={() => { void onPlaySweptSine(0); }}
+          style={{ padding: "2px 8px", fontSize: 10, marginTop: 6 }}
+          disabled={isPlaying}
+          title="Play swept sine on first output for calibration"
+        >
+          Calibrate Output
+        </button>
       </div>
 
       {/* ─── Source Position ─── */}

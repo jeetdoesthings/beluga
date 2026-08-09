@@ -26,7 +26,9 @@ import {
   getTelemetry,
   getDeviceCapabilities,
   playChannelTestTone,
+  playSweptSine,
   getLevelMatch,
+  setSpeakerCalGain,
   type AudioDevice,
   type DeviceCapabilities,
   type Telemetry,
@@ -162,6 +164,7 @@ export default function App() {
   const [telemetry, setTelemetry] = useState<import("./audio").Telemetry | null>(null);
   const [showAudioWindow, setShowAudioWindow] = useState(true);
   const [levelMatchLevels, setLevelMatchLevels] = useState<number[] | null>(null);
+  const [speakerCalGains, setSpeakerCalGains] = useState<number[] | null>(null);
   const telemetryInterval = useRef<number | null>(null);
 
   const showToast = (msg: string) => {
@@ -216,6 +219,32 @@ export default function App() {
     } catch (e) {
       showToast(`Level match error: ${e}`);
       return null;
+    }
+  };
+
+  const handlePlaySweptSine = async (channel: number) => {
+    try {
+      const dev = audioDevices.find((d) => d.id === selectedDevice);
+      if (!dev) {
+        showToast("Select a device first");
+        return;
+      }
+      await playSweptSine(dev.id, channel);
+    } catch (e) {
+      showToast(`Swept sine error: ${e}`);
+    }
+  };
+
+  const handleSetSpeakerCalGain = async (index: number, gain: number) => {
+    try {
+      await setSpeakerCalGain(index, gain);
+      setSpeakerCalGains((prev) => {
+        const gains = prev?.slice() ?? Array(project.speakers.length).fill(1.0);
+        gains[index] = gain;
+        return gains;
+      });
+    } catch (e) {
+      showToast(`Cal gain error: ${e}`);
     }
   };
 
@@ -1287,6 +1316,7 @@ export default function App() {
           onSourcePosChange={handleSourcePositionChange}
           onApplyPreset={applyPreset}
           onPlayChannelTestTone={handlePlayChannelTestTone}
+          onPlaySweptSine={handlePlaySweptSine}
           onAssignSpeakerChannel={handleAssignSpeakerChannel}
           onSelectSpeaker={setSelectedSpeakerId}
           selectedSpeakerId={selectedSpeakerId}
@@ -1294,6 +1324,8 @@ export default function App() {
           onClose={() => setShowAudioWindow(false)}
           onGetLevelMatch={handleGetLevelMatch}
           levelMatchLevels={levelMatchLevels}
+          speakerCalGains={speakerCalGains}
+          onSetSpeakerCalGain={handleSetSpeakerCalGain}
         />
       )}
 
