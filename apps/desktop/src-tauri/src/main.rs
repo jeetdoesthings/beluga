@@ -26,7 +26,34 @@ fn save_project(path: String, json: String) -> Result<(), String> {
     fs::write(&path, json).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
+fn save_project_dialog(
+    app_handle: tauri::AppHandle,
+    file_name: Option<String>,
+    json: String,
+) -> Result<String, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let dialog = app_handle
+        .dialog()
+        .file()
+        .set_title("Save Project As")
+        .set_file_name(file_name.unwrap_or_else(|| "project.beluga.json".to_string()));
+
+    let selected = dialog.blocking_save_file();
+
+    match selected {
+        Some(path) => {
+            let path_buf = path.into_path().map_err(|_| "Invalid path".to_string())?;
+            let path_str = path_buf.to_string_lossy().to_string();
+            fs::write(&path_buf, json).map_err(|e| e.to_string())?;
+            Ok(path_str)
+        }
+        None => Err("Save cancelled".to_string()),
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
 fn load_project(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|e| e.to_string())
 }
@@ -96,7 +123,7 @@ fn start_playback(
     project_json: String,
     device_id: String,
     channel_mapping: Vec<usize>,
-    audio_file: Option<String>,
+    audio_bytes: Option<Vec<u8>>,
 ) -> Result<String, String> {
     // Parse project JSON into a BelugaProject.
     let raw: serde_json::Value =
@@ -142,13 +169,16 @@ fn start_playback(
 
     let mut engine = AudioEngine::new(&project, device, mapping)?;
 
-    // Load audio file or generate test tone as fallback.
+    // Load audio source: WAV bytes if provided, otherwise generate test tone.
     let sample_rate = engine.sample_rate();
-    if let Some(ref path) = audio_file {
+    if let Some(bytes) = audio_bytes {
         engine
-            .load_wav_file(path)
+            .load_wav_bytes("inline", &bytes)
             .map_err(|e| format!("Failed to load audio: {}", e))?;
-        eprintln!("[beluga] Loaded audio file: {}", path);
+        eprintln!(
+            "[beluga] Loaded audio from WAV bytes: {} bytes",
+            bytes.len()
+        );
     } else {
         // Generate a test tone (440 Hz sine, 3 seconds) so there's audio to play.
         let tone_samples = (sample_rate as usize * 3).max(1);
@@ -389,11 +419,13 @@ fn speaker_from_json(json: &serde_json::Value) -> Result<Speaker, String> {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(None::<StateEngine>))
         .invoke_handler(tauri::generate_handler![
             save_project,
             load_project,
             get_default_project_dir,
+            save_project_dialog,
             enumerate_audio_devices,
             get_device_capabilities,
             play_channel_test_tone,
@@ -407,7 +439,6 @@ fn main() {
             set_playing,
             get_level_match,
             set_speaker_cal_gain,
-            get_level_match,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

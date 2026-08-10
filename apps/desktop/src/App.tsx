@@ -28,6 +28,7 @@ import {
   playChannelTestTone,
   playSweptSine,
   loadAudioBytes,
+  saveProjectDialog,
   getLevelMatch,
   setSpeakerCalGain,
   type AudioDevice,
@@ -457,20 +458,14 @@ export default function App() {
       return;
     }
     try {
-      await startPlayback(project, selectedDevice);
+      // Pass pending audio bytes (if any) so the backend loads the WAV before starting
+      const audioBytes = pendingAudioBytes?.bytes;
+      await startPlayback(project, selectedDevice, [], audioBytes);
       setIsPlaying(true);
+      setPendingAudioBytes(null);
 
-      // If an audio file was selected, load it into the running engine
-      if (pendingAudioBytes) {
-        try {
-          const result = await loadAudioBytes(pendingAudioBytes.name, pendingAudioBytes.bytes);
-          setPendingAudioBytes(null);
-          showToast(result);
-        } catch (e) {
-          showToast(`Failed to load audio: ${e}`);
-        }
-      } else if (selectedAudioFile) {
-        showToast(`Playback started with audio file: ${selectedAudioFile}`);
+      if (selectedAudioFile) {
+        showToast(`Playback started: ${selectedAudioFile}`);
       } else {
         showToast("Playback started (test tone)");
       }
@@ -742,16 +737,15 @@ export default function App() {
     showToast("Cleared all speakers");
   };
 
-  const handleExportJSON = () => {
+  const handleExportJSON = async () => {
     const dataStr = JSON.stringify(project, null, 2);
-    const blob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${project.name.toLowerCase().replace(/\s+/g, "_")}.beluga.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast("Exported project JSON");
+    const defaultName = `${project.name.toLowerCase().replace(/\s+/g, "_")}.beluga.json`;
+    try {
+      const path = await saveProjectDialog(defaultName, dataStr);
+      showToast(`Saved to ${path}`);
+    } catch (e) {
+      showToast(`Save failed: ${e}`);
+    }
   };
 
   const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {

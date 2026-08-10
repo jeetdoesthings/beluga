@@ -78,7 +78,7 @@ export async function startPlayback(
   project: BelugaProject,
   deviceId: string,
   channelMapping: number[] = [],
-  audioFile?: string,
+  audioBytes?: number[],
 ): Promise<string> {
   const projectJson = JSON.stringify(project);
   if (!projectJson || projectJson === "undefined") {
@@ -89,14 +89,14 @@ export async function startPlayback(
     device_id: deviceId,
     channel_mapping: channelMapping,
   };
-  if (audioFile !== undefined) {
-    opts.audio_file = audioFile;
+  if (audioBytes !== undefined) {
+    opts.audio_bytes = audioBytes;
   }
   console.log("[beluga/audio] invoke start_playback with:", {
     device_id: deviceId,
     project_json_len: projectJson.length,
     channel_mapping: channelMapping,
-    audio_file: audioFile ?? null,
+    audio_bytes: audioBytes ? `${(audioBytes.length / 1024).toFixed(0)} KB` : null,
   });
   return (await invoke("start_playback", opts)) as string;
 }
@@ -160,5 +160,16 @@ export async function loadAudioBytes(
   return (await invoke("load_audio_bytes", {
     file_name: fileName,
     bytes,
+  })) as string;
+}
+
+/** Save project JSON via system save dialog. Returns the saved file path. */
+export async function saveProjectDialog(
+  fileName?: string,
+  json?: string,
+): Promise<string> {
+  return (await invoke("save_project_dialog", {
+    file_name: fileName ?? null,
+    json: json ?? "",
   })) as string;
 }

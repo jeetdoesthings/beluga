@@ -14,6 +14,7 @@ serde_json = "1"
 beluga-core = { path = "../../../crates/beluga-core" }
 beluga-spatial = { path = "../../../crates/beluga-spatial" }
 beluga-audio-io = { path = "../../../crates/beluga-audio-io" }
+tauri-plugin-dialog = "2.7.2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
