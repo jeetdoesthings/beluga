@@ -283,11 +283,16 @@ export function AudioControls({
         </div>
         {selectedAudioFile ? (
           <div style={{ fontSize: 10, color: "var(--text-secondary)", wordBreak: "break-all" }}>
-            {selectedAudioFile}
+            <div style={{ fontWeight: 600, marginBottom: 2 }}>{selectedAudioFile}</div>
+            <div style={{ opacity: 0.8 }}>
+              {isPlaying
+                ? "✓ Loaded into engine"
+                : "▶ Will load on next Start Playback"}
+            </div>
           </div>
         ) : (
           <div style={{ fontSize: 10, color: "var(--text-secondary)", opacity: 0.6 }}>
-            No file selected — will play test tone
+            No file selected — will play test tone (440 Hz)
           </div>
         )}
       </div>

@@ -257,17 +257,38 @@ export default function App() {
     try {
       const input = document.createElement("input");
       input.type = "file";
-      input.accept = ".wav";
+      // Set accept attribute as a browser hint AND enforce in code below
+      input.accept = ".wav, audio/wav, audio/x-wav";
       input.onchange = async (e) => {
         const target = e.target as HTMLInputElement;
         if (target.files && target.files.length > 0) {
           const file = target.files[0];
+          // Enforce WAV-only: check file extension
+          const fileName = file.name.toLowerCase();
+          if (!fileName.endsWith(".wav") && !fileName.endsWith(".wave")) {
+            showToast(`Only WAV files are supported. Selected: ${file.name}`);
+            // Reset the input so the same file can be selected again
+            input.value = "";
+            return;
+          }
+          // Additional validation: check WAV magic bytes (RIFF....WAVE)
           const arrayBuffer = await file.arrayBuffer();
+          const header = new Uint8Array(arrayBuffer.slice(0, 12));
+          // WAV header: "RIFF" at offset 0, "WAVE" at offset 8
+          const riff = new TextDecoder().decode(header.slice(0, 4));
+          const wave = new TextDecoder().decode(header.slice(8, 12));
+          if (riff !== "RIFF" || wave !== "WAVE") {
+            showToast(`"${file.name}" is not a valid WAV file.`);
+            input.value = "";
+            return;
+          }
           const bytes = Array.from(new Uint8Array(arrayBuffer));
           setSelectedAudioFile(file.name);
           setPendingAudioBytes({ name: file.name, bytes });
           showToast(`Selected: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
         }
+        // Reset input value so selecting the same file again triggers onchange
+        input.value = "";
       };
       input.click();
     } catch (e) {
