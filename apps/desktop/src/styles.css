@@ -996,7 +996,7 @@ body {
 
 .rail-flyout-menu {
   position: absolute;
-  left: calc(100% + 10px);
+  left: 100%;
   top: 50%;
   transform: translateY(-50%);
   background: #ffffff;

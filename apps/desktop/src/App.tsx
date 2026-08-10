@@ -259,16 +259,22 @@ export default function App() {
       input.type = "file";
       // Set accept attribute as a browser hint AND enforce in code below
       input.accept = ".wav, audio/wav, audio/x-wav";
+      input.style.display = "none";
+
+      // Must add to DOM for click() to work reliably in the Tauri webview
+      document.body.appendChild(input);
+
       input.onchange = async (e) => {
         const target = e.target as HTMLInputElement;
+        // Clean up the input element from the DOM
+        document.body.removeChild(input);
+
         if (target.files && target.files.length > 0) {
           const file = target.files[0];
           // Enforce WAV-only: check file extension
           const fileName = file.name.toLowerCase();
           if (!fileName.endsWith(".wav") && !fileName.endsWith(".wave")) {
             showToast(`Only WAV files are supported. Selected: ${file.name}`);
-            // Reset the input so the same file can be selected again
-            input.value = "";
             return;
           }
           // Additional validation: check WAV magic bytes (RIFF....WAVE)
@@ -279,17 +285,15 @@ export default function App() {
           const wave = new TextDecoder().decode(header.slice(8, 12));
           if (riff !== "RIFF" || wave !== "WAVE") {
             showToast(`"${file.name}" is not a valid WAV file.`);
-            input.value = "";
             return;
           }
           const bytes = Array.from(new Uint8Array(arrayBuffer));
           setSelectedAudioFile(file.name);
           setPendingAudioBytes({ name: file.name, bytes });
-          showToast(`Selected: ${file.name} (${(file.size / 1024).toFixed(0)} KB)`);
+          showToast(`Selected: ${file.name} (${(file.size / 1024).toFixed(0)} KB) — click Start Playback to play`);
         }
-        // Reset input value so selecting the same file again triggers onchange
-        input.value = "";
       };
+
       input.click();
     } catch (e) {
       showToast(`File selection failed: ${e}`);
@@ -890,7 +894,7 @@ export default function App() {
           </button>
           <div className="rail-flyout-menu">
             <label className="flyout-item">
-              <Icons.Save />
+              <Icons.Import />
               <span>Import Project (.json)</span>
               <input type="file" accept=".json,.beluga.json" onChange={handleImportJSON} style={{ display: "none" }} />
             </label>
