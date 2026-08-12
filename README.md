@@ -1,145 +1,171 @@
 # Beluga 🐋
 
-**A room-aware, hardware-agnostic spatial audio platform and 3D visualizer.**
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests: 90+73 passing](https://img.shields.io/badge/tests-90%20Python%20%2B%2073%20Rust-brightgreen.svg)](#running-tests)
-[![Version: 0.3.0](https://img.shields.io/badge/version-0.3.0-blue.svg)](#overview)
+**A room-aware, hardware-agnostic spatial audio platform that adapts audio playback to your actual speaker setup.**
 
 ---
 
 ## Overview
 
-Beluga transforms arbitrary speaker arrangements into the best coherent spatial audio playback system that your physical room and hardware can produce. Instead of forcing you to place speakers according to rigid, predefined layout standards (such as traditional 5.1 or 7.1.4), Beluga adapts to your room's unique geometry.
+Beluga transforms your room into a personalized spatial listening environment.
 
-> **Do not build the room around the audio system. Build the audio system around the room.**
+Instead of requiring predefined speaker layouts, Beluga analyzes your room, your listening position, and your available speakers to create the best possible spatial sound field for your unique setup.
 
----
+Whether you're using two bookshelf speakers, studio monitors, or a custom multi-speaker system, Beluga adapts the rendering to your hardware instead of forcing your hardware to match a standard.
 
-## Key Features
-
-- **Real-Time Audio Playback**: Native Rust audio engine (CPAL) with real-time VBAP rendering, audio device enumeration, channel mapping, and zero-blocking audio callbacks integrated into the Tauri backend.
-- **3D Interactive Room Visualizer**: Real-time 3D room simulation built with Three.js, featuring smooth orbit navigation, custom transform gizmos, listener orientation rays, and sound source trajectory arcs.
-- **Real-Time VBAP Calculation**: Vector Base Amplitude Panning (VBAP) computes speaker gains and visualizes active energy distribution live as you move virtual sound sources.
-- **Flexible Layout Management**: Instant standard presets (2.0 Stereo, 5.1 Surround, 7.1.4 Atmos) or custom speaker creation with full 3D Cartesian positioning ($X, Y, Z$) and yaw orientation controls.
-- **Clean DAW-Style UI**: Modern, light-mode interface with a slim left icon toolbar, tabbed bottom controls (Room, Listener, Source, Speakers), contextual floating inspectors, and an Audio Engine panel for device selection and transport.
-- **Project Import/Export**: Save and load complete room configurations as JSON, or import 3D GLB room models.
-- **Math Research Core**: Pure Python spatial audio research suite covering delay alignment, gain smoothing, coordinate transformations, and offline per-speaker WAV rendering. Rust crates (beluga-core, beluga-dsp, beluga-spatial, beluga-room, beluga-audio-io) provide the real-time counterpart with 73 passing tests.
+> **Don't build your room around your speakers. Let your speakers adapt to your room.**
 
 ---
 
-## Quick Start
+## Features
 
-### Prerequisites
+### Room-Aware Audio
 
-- **Node.js**: v18.0.0 or later
-- **npm** (or yarn / pnpm)
-- **Python**: 3.10 or later (for running research math & test suite)
-- *(Optional)* **Rust**: If compiling native desktop binaries via Tauri
+Import a 3D scan of your room and build an accurate virtual representation of your listening space.
+
+- Interactive 3D room visualization
+- GLB room model support
+- Smooth real-time navigation
+- Accurate room geometry
 
 ---
 
-### Running the Visualizer App
+### Interactive Speaker Placement
 
-1. Navigate to the desktop application directory:
-   ```bash
-   cd apps/desktop
-   ```
+Place your speakers exactly where they exist in your room.
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+- Drag-and-drop positioning
+- 3D movement and rotation
+- Unlimited custom speaker layouts
+- Live room visualization
 
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
+---
 
-4. Open your browser at `http://localhost:1420` (or the port shown in your terminal).
+### Listener Positioning
 
-To build a production web bundle:
+Place the listening position anywhere inside the room.
+
+Beluga continuously renders audio from the listener's perspective, allowing you to optimize playback for desks, home theaters, studios, gaming setups, or living spaces.
+
+---
+
+### Audio Device Detection
+
+Beluga automatically detects every playback device connected to your computer.
+
+View:
+
+- Connected audio devices
+- Available output channels
+- Sample rates
+- Device capabilities
+
+---
+
+### Output Channel Mapping
+
+Assign each available output channel to its corresponding speaker.
+
+Compatible with:
+
+- USB audio interfaces
+- Studio monitors
+- Active speakers
+- AV receivers
+- Multi-channel audio devices
+
+---
+
+### Geometry-Aware Spatial Rendering
+
+Beluga renders audio based on your actual speaker geometry rather than assuming fixed layouts.
+
+Features include:
+
+- Smooth virtual source movement
+- Delay alignment
+- Gain optimization
+- Phantom source generation
+- Real-time spatial rendering
+
+---
+
+### Flexible Speaker Layouts
+
+Beluga works with virtually any speaker arrangement.
+
+Supported configurations include:
+
+- Stereo systems
+- Quadraphonic setups
+- 5.1 surround systems
+- 7.1 surround systems
+- Custom multi-channel layouts
+- Irregular speaker arrangements
+
+Beluga adapts to your setup instead of forcing predefined standards.
+
+---
+
+### Save & Load Projects
+
+Save complete listening environments and continue exactly where you left off.
+
+Projects include:
+
+- Room geometry
+- Speaker positions
+- Listener position
+- Audio routing
+- Project settings
+
+---
+
+### Real-Time Visualization
+
+Visualize your entire listening environment while audio is playing.
+
+Display:
+
+- Room geometry
+- Speaker locations
+- Listener position
+- Active sound sources
+- Live output activity
+
+---
+
+## Getting Started
+
+### Requirements
+
+- macOS or Windows
+- Node.js 18 or later
+- npm, pnpm, or yarn
+
+### Development
+
 ```bash
-npm run build
-```
-
-*(Optional)* To launch the native Tauri desktop window:
-```bash
+cd apps/desktop
+npm install
 npm run tauri dev
 ```
 
----
+### Production Build
 
-### Running the Python Core & Tests
-
-1. From the project root, create and activate a Python virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-2. Install the package in editable mode with development dependencies:
-   ```bash
-   pip install -e ".[dev]"
-   ```
-
-3. Run the automated test suite (90 passing tests):
-   ```bash
-   pytest
-   ```
-
-4. Run the demo CLI (offline render of a mono WAV across configured speaker layout):
-   ```bash
-   python -m beluga.cli --demo
-   ```
-
-### Running Rust Tests
-
-From the project root:
 ```bash
-cd crates
-cargo test       # 73 tests across 5 crates
-cargo clippy -- --deny warnings
-cargo fmt --check
+npm run tauri build
 ```
 
 ---
 
-## Project Structure
+## Privacy
 
-```
-beluga/
-├── apps/
-│   └── desktop/            # React + TypeScript + Three.js + Tauri App
-│       ├── src/
-│       │   ├── three/      # Three.js 3D Scene, gizmos, and render loops
-│       │   ├── types/      # Project data structures & schemas
-│       │   ├── App.tsx     # UI controller and DAW layout
-│       │   ├── audio.ts    # Tauri bridge for real-time audio engine
-│       │   ├── components/ # UI components (AudioControls, etc.)
-│       │   ├── styles.css  # Design system tokens and styles
-│       │   └── vbap.ts     # Client-side real-time VBAP math engine
-│       ├── src-tauri/      # Tauri desktop configuration & Rust backend
-│       │   └── src/main.rs # Backend commands (save/load, audio device control)
-│       └── package.json
-├── crates/                 # Rust workspace (0.3 real-time audio engine)
-│   ├── Cargo.toml          # Workspace manifest (5 crates)
-│   ├── beluga-core/        # Vector3, Orientation, geometry, project models
-│   ├── beluga-dsp/         # Gain smoothing, fractional delay, gain management
-│   ├── beluga-spatial/     # VBAP, real-time renderer, spatial scene
-│   ├── beluga-room/        # Room geometry, bounding boxes
-│   └── beluga-audio-io/    # CPAL device enumeration, channel mapping, audio engine
-├── research/
-│   └── python/             # Python spatial audio research package
-│       ├── beluga/         # Geometry, VBAP, gain smoothing, delay alignment
-│       └── tests/          # 90 pytest unit & integration tests
-├── pyproject.toml          # Python project configuration (v0.3.0)
-├── requirements.txt        # Python requirements
-└── README.md
-```
+Beluga performs all room processing, spatial rendering, and audio computation locally on your device.
+
+Your room scans, speaker layouts, and project data never leave your computer.
 
 ---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the MIT License.
